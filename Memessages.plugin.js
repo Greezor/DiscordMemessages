@@ -3,44 +3,15 @@
  * @author Greezor
  * @authorId 382062281623863298
  * @description Meme notifications
- * @version 0.0.1
+ * @version 0.1.0
  */
 
-const request = require("request");
-
-const ZERES_DOWNLOAD_URL = 'https://raw.githubusercontent.com/rauenzi/BDPluginLibrary/master/release/0PluginLibrary.plugin.js';
-const JQUERY_CDN = 'https://code.jquery.com/jquery-3.6.4.slim.min.js';
-const SOUNDS_SEARCH_URL = 'https://api.meowpad.me/v2/sounds/search?q=';
-
-
-// const SOUNDS_SEARCH_URL = 'https://www.myinstants.com/en/search/?name=';
-// const buttons = $(data)
-// 	.find('button[onclick^="play("]');
-
-// if( !buttons.length ) return;
-
-// return 'https://www.myinstants.com' + (
-// 	buttons
-// 		.eq(0)
-// 		.attr('onclick')
-// 		.trim()
-// 		.replace(/play\(|\)|'|"|\s/g, '')
-// 		.split(',')[0]
-// );
-
-
-// слышать звук своих сообщений
-// звук только в текущей конфе (типа закрепка)(фокус)
-// прерывать другие звуки при новом сообщении
 // окно с браузером звуков и/или подсказки autocomplete
 // модификаторы в тексте типа [х2] (проиграть два раза или больше), также отступ и пагинация (может даже громкость/скорость/питч)
-// кнопка временно заглушить
-// кнопка отменить все текущие звуки
 // избранные звуки (может типа мини саундпад или просто коллекция любимых)
 // сочетания клавиш для отмены звуков, глушилки и избранного
 // история звуков (причём всех, не только своих)
 // настройка дефолтной громкости/скорости/питча
-// добавлять спойлер на текст сообщения (скрывать текст)
 // звук уведомления дискорда (или вкл/выкл или даже кастом)
 // всплывашки что за звук играет
 // добавлять ссылку на звук к сообщению для тех у кого нет плагина
@@ -50,50 +21,149 @@ const SOUNDS_SEARCH_URL = 'https://api.meowpad.me/v2/sounds/search?q=';
 // !!! предупреждение что все данные отправляются на сервер (отключение предупреждения)
 // придумать алгоритм отправки куска сообщения на сервер (не факт...)
 
-
 module.exports = class Memessages {
 
 	constructor(meta)
 	{
 		this.meta = meta;
-		this.dispatcher = null;
+
+		this.launchedAt = 0;
 		this.lastMessageID = null;
+		this.muted = false;
+		this.sidebar = false;
+
+		this.audios = [];
+
+		this.unrender = () => {};
 	}
 
-	async onMessage({ message, optimistic })
+	get pluginEnabled()
 	{
-		if( optimistic || this.lastMessageID == message.id ) return;
+		return !!this.launchedAt;
+	}
+
+	set pluginEnabled(value)
+	{
+		this.launchedAt = value ? Date.now() : null;
+	}
+
+	get settings()
+	{
+		const defaultSettings = {
+			memeChannels: [],
+			chaosMode: false,
+		};
+
+		return Object.assign({}, defaultSettings, (
+			BdApi.loadData('Memessages', 'settings') ?? {}
+		));
+	}
+
+	set settings(value)
+	{
+		BdApi.saveData('Memessages', 'settings', value);
+	}
+
+	get dispatcher()
+	{
+		return BdApi.findModuleByProps('dispatch', 'subscribe');
+	}
+
+	get channelStore()
+	{
+		return BdApi.findModuleByProps('getLastSelectedChannelId');
+	}
+
+	fetch(options)
+	{
+		return new Promise((resolve, reject) => {
+			require('request')(options, (error, response, data) => {
+				if( error )
+					return reject(new Error(error));
+
+				if( response.statusCode != 200 )
+					return reject(new Error(response.statusCode));
+
+				return resolve(data);
+			});
+		});
+	}
+
+	get memeIcon()
+	{
+		const memes = [
+			'https://img.icons8.com/fluency/1x/doge.png',
+			'https://img.icons8.com/fluency/1x/trollface.png',
+			'https://img.icons8.com/fluency/1x/lul.png',
+			'https://img.icons8.com/fluency/1x/monkas.png',
+			'https://img.icons8.com/fluency/1x/pogchamp.png',
+			'https://img.icons8.com/fluency/1x/angry-face-meme.png',
+			'https://img.icons8.com/fluency/1x/gachi.png',
+			'https://img.icons8.com/color/1x/not-bad-meme.png',
+			'https://img.icons8.com/color/1x/feels-guy.png',
+			'https://img.icons8.com/color/1x/ugandan-knuckles.png',
+			'https://img.icons8.com/color-glass/1x/salt-bae.png',
+		];
+
+		return memes[
+			Math.floor(Math.random() * memes.length)
+		];
+	}
+
+	async onMessage({ channelId, message, optimistic })
+	{
+		if(
+			!this.pluginEnabled
+			||
+			optimistic
+			||
+			this.lastMessageID == message.id
+			||
+			(
+				!this.settings.chaosMode
+				&&
+				!this.settings.memeChannels.includes(channelId)
+			)
+		)	return;
 
 		this.lastMessageID = message.id;
 
-		const url = SOUNDS_SEARCH_URL + encodeURIComponent(message.content);
+		const memeUrl = await this.getMemeSound(message.content);
 
-		request(
-			{
-				url,
-				headers: {
-					'accept-language': 'ru,en', // `${ navigator.language },en`,
+		if( memeUrl )
+			await this.play(memeUrl, {
+				props: {
+					muted: this.muted,
 				},
-			},
-			async (error, response, json) => {
-				if( error || response.statusCode != 200 ) return;
-
-				const { sounds } = JSON.parse(json);
-
-				if( !sounds.length ) return;
-	
-				const audioUrl = `https://api.meowpad.me/v2/sounds/preview/${
-					sounds[0].id
-				}.m4a`;
-	
-				await this.play(audioUrl);
-			}
-		);
+			});
 	}
 
-	async play(url)
+	async getMemeSound(text)
+	{
+		const json = await this.fetch({
+			url: `https://api.meowpad.me/v2/sounds/search?q=${ encodeURIComponent(text) }`,
+			headers: {
+				'accept-language': 'ru,en',
+			},
+		});
+
+		const { sounds } = JSON.parse(json);
+
+		if( !sounds.length )
+			return null;
+
+		return `https://api.meowpad.me/v2/sounds/preview/${ sounds[0].id }.m4a`;
+	}
+
+	async play(url, params = {})
 	{
 		const audio = new Audio(url);
+
+		if( params.props )
+			for(let [ prop, value ] of Object.entries(params.props))
+				audio[prop] = value;
+
+		this.audios.push(audio);
 
 		audio.addEventListener('canplaythrough', () => {
 			audio.play();
@@ -102,39 +172,472 @@ module.exports = class Memessages {
 		await new Promise(resolve => {
 			audio.addEventListener('ended', resolve);
 		});
+
+		this.audios.splice(this.audios.indexOf(audio), 1);
+	}
+
+	async aggregateAudio(func)
+	{
+		for(let audio of this.audios)
+			await func(audio);
+	}
+
+	render()
+	{
+		const currentLaunch = this.launchedAt;
+
+		const el = (tag, attrs = {}) => {
+			let elem = document.createElement(tag);
+
+			for(let [ attr, value ] of Object.entries(attrs))
+				elem.setAttribute(attr, value);
+
+			return elem;
+		};
+
+		const find = selector => document.querySelector(selector);
+
+		const findAll = selector => document.querySelectorAll(selector);
+
+		const mount = (el, selector, firstMount = true) => {
+			const parent = find(selector);
+
+			if( !parent ){
+				if( !firstMount )
+					document.addEventListener('click', () => {
+						setTimeout(() => mount(el, selector, false), 100);
+					}, { capture: true, once: true });
+
+				return;
+			}
+
+			parent.append(el);
+
+			BdApi.onRemoved(el, () => {
+				if( this.launchedAt === currentLaunch )
+					mount(el, selector, false);
+			});
+
+			if( firstMount )
+				this.extendUnrender(() => el.remove());
+		};
+
+		
+
+		const muteBtn = el('div', {
+			class: `${ find('[class^="winButtonMinMax"]').classList.value } memessages--mute-toggle on`,
+		});
+
+		const muteBtnIcon = el('i', { class: 'fa-solid fa-volume-off' });
+		muteBtn.append(muteBtnIcon);
+
+		const muteBtnImg = el('img', { src: this.memeIcon });
+		muteBtn.append(muteBtnImg);
+
+		muteBtn.addEventListener('click', () => {
+			this.muted = !this.muted;
+			muteBtn.classList.toggle('on');
+
+			this.aggregateAudio(audio => audio.muted = this.muted);
+
+			if( !this.muted )
+				muteBtnImg.setAttribute('src', this.memeIcon);
+		});
+
+		mount(muteBtn, '[class^="typeWindows"][class*="titleBar"]');
+
+
+
+		const channelBtn = el('div', {
+			class: 'memessages--toolbar-btn memessages--channel-btn',
+		});
+
+		const channelBtnIconOn = el('i', { class: 'memessages--channel-btn--icon-on fa-solid fa-bell' });
+		channelBtn.append(channelBtnIconOn);
+
+		const channelBtnIconOff = el('i', { class: 'memessages--channel-btn--icon-off fa-solid fa-bell-slash' });
+		channelBtn.append(channelBtnIconOff);
+
+		const channelBtnImg = el('img', { src: this.memeIcon });
+		channelBtn.append(channelBtnImg);
+
+		const currentChannelId = this.channelStore.getChannelId();
+
+		if( !currentChannelId )
+			channelBtn.classList.add('hide');
+
+		if( this.settings.memeChannels.includes(currentChannelId) )
+			channelBtn.classList.add('on');
+
+		channelBtn.addEventListener('click', () => {
+			channelBtn.classList.toggle('on');
+
+			const channelId = this.channelStore.getChannelId();
+
+			if( this.settings.memeChannels.includes(channelId) ){
+				this.settings = {
+					...this.settings,
+					memeChannels: this.settings.memeChannels
+						.filter(id => id != channelId),
+				};
+			}else{
+				this.settings = {
+					...this.settings,
+					memeChannels: [
+						...this.settings.memeChannels,
+						channelId,
+					]
+				};
+
+				channelBtnImg.setAttribute('src', this.memeIcon);
+			}
+		});
+
+		const onChannelChange = ({ channelId }) => {
+			if( this.launchedAt != currentLaunch ) return;
+
+			if( channelId ){
+				channelBtn.classList.remove('hide');
+
+				if( this.settings.memeChannels.includes(channelId) )
+					channelBtn.classList.add('on');
+				else
+					channelBtn.classList.remove('on');
+			}
+			else
+				channelBtn.classList.add('hide');
+		};
+
+		this.dispatcher.subscribe('CHANNEL_SELECT', onChannelChange);
+		this.extendUnrender(() => {
+			this.dispatcher.unsubscribe('CHANNEL_SELECT', onChannelChange);
+		});
+
+		mount(channelBtn, '[class^="toolbar"]');
+
+
+
+		const sidebarBtn = el('div', {
+			class: 'memessages--toolbar-btn',
+		});
+
+		const sidebarBtnIcon = el('i', { class: 'fa-solid fa-bars' });
+		sidebarBtn.append(sidebarBtnIcon);
+
+		const sidebarBtnImg = el('img', { src: this.memeIcon });
+		sidebarBtn.append(sidebarBtnImg);
+
+		sidebarBtn.addEventListener('click', () => {
+			this.sidebar = true;
+			sidebar.classList.add('open');
+
+			sidebarBtnImg.setAttribute('src', this.memeIcon);
+		});
+
+		mount(sidebarBtn, '[class^="toolbar"]');
+
+
+
+		const sidebar = el('div', {
+			class: 'memessages--sidebar',
+		});
+
+		const sidebarSettings = el('div', { class: 'memessages--sidebar--card' });
+		const sidebarCloseBtn = el('i', { class: 'memessages--sidebar--close fa-solid fa-angle-right fa-2x' });
+		const sidebarCloseBtnWrapper = el('div', { style: 'text-align:right' });
+		sidebarCloseBtnWrapper.append(sidebarCloseBtn);
+		sidebarSettings.append(sidebarCloseBtnWrapper);
+		sidebar.append(sidebarSettings);
+
+		sidebarCloseBtn.addEventListener('click', () => {
+			this.sidebar = false;
+			sidebar.classList.remove('open');
+		});
+
+		const settingsList = [
+			{
+				prop: 'chaosMode',
+				label: (/ru/).test(navigator.language) ? 'Режим Хаоса!' : 'Chaos Control!',
+				sound: 'https://api.meowpad.me/v2/sounds/preview/78899.m4a',
+			},
+		];
+
+		for(let setting of settingsList){
+			const group = el('div', { class: 'memessages--sidebar--setting' });
+			const label = el('span');
+			const toggle = el('div', { class: 'memessages--toggle' });
+			label.innerText = setting.label;
+			group.append(label);
+			group.append(toggle);
+			sidebarSettings.append(group);
+
+			if( this.settings[setting.prop] )
+				toggle.classList.add('on');
+
+			toggle.addEventListener('click', async () => {
+				toggle.classList.toggle('on');
+
+				this.settings = {
+					...this.settings,
+					[setting.prop]: !this.settings[setting.prop],
+				};
+
+				if( setting.sound && this.settings[setting.prop] )
+					await this.play(setting.sound);
+			});
+		}
+
+		mount(sidebar, '[class^="app-"]');
+	}
+
+	extendUnrender(func)
+	{
+		const beforeUnrender = this.unrender;
+		this.unrender = () => {
+			beforeUnrender();
+			func();
+		};
 	}
 
 	async start()
 	{
-		const { ZeresPluginLibrary } = global;
-
-		if( !ZeresPluginLibrary )
-			return BdApi.showNotice(
-				`The library plugin needed for "Memessages" is missing.`,
-				{
-					type: 'error',
-					buttons: [
-						{
-							label: 'Download',
-							onClick: () => window.open(ZERES_DOWNLOAD_URL),
-						}
-					],
-				}
-			);
-
-        const { DOMTools, DiscordModules } = ZeresPluginLibrary;
-
-		this.dispatcher = DiscordModules.Dispatcher;
-
-		if( !window.jQuery )
-			await DOMTools.addScript('Memessages.jquery', JQUERY_CDN);
+		this.pluginEnabled = true;
 
 		this.dispatcher.subscribe('MESSAGE_CREATE', e => this.onMessage(e));
+
+		BdApi.injectCSS('Memessages', `
+			@import url("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.3.0/css/all.min.css");
+
+			.memessages--mute-toggle{
+				position: relative;
+				z-index: 2;
+			}
+			
+			.memessages--mute-toggle i{
+				position: relative;
+				transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+			}
+
+			.memessages--mute-toggle i:before{
+				clip-path: polygon(0% 0%, 0% 100%, 100% 100%, 100% 90%, 0% 0%, 100% 0%, 100% 55%, 20% 0%);
+			}
+
+			.memessages--mute-toggle i:after{
+				content: '';
+				position: absolute;
+				top: 50%;
+				left: 50%;
+				width: 2px;
+				height: 24px;
+				margin-top: -12px;
+				margin-left: -1px;
+				background: currentColor;
+				border-radius: 2px;
+				transform: rotate(-45deg);
+			}
+
+			.memessages--mute-toggle img{
+				position: absolute;
+				top: 50%;
+				left: 50%;
+				width: 18px;
+				height: 18px;
+				margin-top: -9px;
+				margin-left: -9px;
+				transition: all 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
+				transform: scale(0) translateY(-2px) rotate(-10deg);
+				z-index: -1;
+			}
+
+			.memessages--mute-toggle.on i{
+				transform: translateX(-7px);
+			}
+
+			.memessages--mute-toggle.on i:before{
+				clip-path: none;
+			}
+
+			.memessages--mute-toggle.on i:after{
+				display: none;
+			}
+
+			.memessages--mute-toggle.on img{
+				transition-timing-function: cubic-bezier(0.34, 7.56, 0.64, 1);
+				transform: scale(1) translateX(5px);
+			}
+
+			.memessages--toolbar-btn{
+				position: relative;
+				display: inline-flex;
+				justify-content: center;
+				align-items: center;
+				width: 40px;
+				height: 24px;
+				cursor: pointer;
+			}
+
+			.memessages--toolbar-btn i{
+				opacity: 0.85;
+			}
+
+			.memessages--toolbar-btn img{
+				position: absolute;
+				bottom: 0;
+				right: 0;
+				width: 18px;
+				height: 18px;
+			}
+
+			.memessages--toolbar-btn:hover i{
+				opacity: 1;
+			}
+
+			.memessages--channel-btn{
+				z-index: 2;
+			}
+
+			.memessages--channel-btn.hide{
+				display: none;
+			}
+
+			.memessages--channel-btn .memessages--channel-btn--icon-on{
+				display: none;
+			}
+
+			.memessages--channel-btn .memessages--channel-btn--icon-off{
+				display: inline-block;
+			}
+
+			.memessages--channel-btn.on .memessages--channel-btn--icon-on{
+				display: inline-block;
+			}
+
+			.memessages--channel-btn.on .memessages--channel-btn--icon-off{
+				display: none;
+			}
+
+			.memessages--channel-btn.on img{
+				animation: memessages--jump 0.5s ease;
+			}
+
+			@keyframes memessages--jump{
+				0%{
+					transform: scale(1);
+				}
+
+				50%{
+					transform: scale(4);
+				}
+
+				100%{
+					transform: scale(1);
+				}
+			}
+
+			.memessages--sidebar{
+				position: absolute;
+				padding: 10px 5px;
+				top: 0;
+				right: 0;
+				bottom: 0;
+				width: 360px;
+				background: linear-gradient(to right, transparent 0%, transparent 30%, rgba(0, 0, 0, 0.5) 100%);
+				transform: translateX(100%);
+				transition: all 0.3s ease;
+				overflow-x: hidden;
+				overflow-y: scroll;
+				z-index: 999;
+			}
+
+			.memessages--sidebar::-webkit-scrollbar{
+				width: 5px;
+			}
+
+			.memessages--sidebar::-webkit-scrollbar-track{
+				background: transparent;
+			}
+
+			.memessages--sidebar::-webkit-scrollbar-thumb{
+				background: #7289da;
+				border-radius: 100px;
+			}
+
+			.memessages--sidebar.open{
+				transform: none;
+			}
+
+			.memessages--sidebar--close{
+				margin: -10px;
+				padding: 10px;
+				cursor: pointer;
+			}
+
+			.memessages--sidebar--card{
+				display: flex;
+				flex-direction: column;
+				padding: 20px;
+				gap: 20px;
+				background: #fff;
+				border-radius: 10px;
+				font-size: 18px;
+				line-height: 130%;
+				color: #333;
+				box-shadow: inset 0 -1px 0 1px rgba(0, 0, 0, 0.1);
+			}
+
+			.memessages--sidebar--setting{
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+			}
+
+			.memessages--toggle{
+				position: relative;
+				display: inline-block;
+				width: 40px;
+				height: 25px;
+				background: #555;
+				border-radius: 100px;
+				transition: all 0.3s ease;
+				cursor: pointer;
+			}
+
+			.memessages--toggle:after{
+				content: '';
+				position: absolute;
+				top: 2px;
+				left: 2px;
+				width: 21px;
+				height: 21px;
+				background: #fff;
+				border-radius: 50%;
+				transition: inherit;
+			}
+
+			.memessages--toggle.on{
+				background: #7289da;
+			}
+
+			.memessages--toggle.on:after{
+				transform: translateX(15px);
+			}
+		`);
+
+		this.render();
 	}
 
 	stop()
 	{
-		this?.dispatcher?.unsubscribe?.('MESSAGE_CREATE', e => this.onMessage(e));
+		this.pluginEnabled = false;
+
+		this.aggregateAudio(audio => audio.pause());
+		this.audios = [];
+
+		this.dispatcher.unsubscribe('MESSAGE_CREATE', e => this.onMessage(e));
+		BdApi.clearCSS('Memessages');
+		this.unrender();
+
+		this.unrender = () => {};
 	}
 
 }
