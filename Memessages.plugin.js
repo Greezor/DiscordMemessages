@@ -52,6 +52,7 @@ module.exports = class Memessages {
 		const defaultSettings = {
 			memeChannels: [],
 			chaosMode: false,
+			volume: 0.5,
 		};
 
 		return Object.assign({}, defaultSettings, (
@@ -134,6 +135,7 @@ module.exports = class Memessages {
 			await this.play(memeUrl, {
 				props: {
 					muted: this.muted,
+					volume: this.settings.volume,
 				},
 			});
 	}
@@ -343,7 +345,7 @@ module.exports = class Memessages {
 		});
 
 		const sidebarSettings = el('div', { class: 'memessages--sidebar--card' });
-		const sidebarCloseBtn = el('i', { class: 'memessages--sidebar--close fa-solid fa-angle-right fa-2x' });
+		const sidebarCloseBtn = el('i', { class: 'memessages--sidebar--close fa-solid fa-angle-right' });
 		const sidebarCloseBtnWrapper = el('div', { style: 'text-align:right' });
 		sidebarCloseBtnWrapper.append(sidebarCloseBtn);
 		sidebarSettings.append(sidebarCloseBtnWrapper);
@@ -356,35 +358,130 @@ module.exports = class Memessages {
 
 		const settingsList = [
 			{
+				type: 'toggle',
+				sounds: [
+					'https://api.meowpad.me/v2/sounds/preview/78899.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/78898.m4a',
+				],
 				prop: 'chaosMode',
 				label: (/ru/).test(navigator.language) ? 'Режим Хаоса!' : 'Chaos Control!',
-				sound: 'https://api.meowpad.me/v2/sounds/preview/78899.m4a',
+			},
+			{
+				type: 'slider',
+				min: 0,
+				max: 1,
+				sounds: [
+					'https://api.meowpad.me/v2/sounds/preview/57562.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/48886.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/37525.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/60843.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/39479.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/1475.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/3145.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/1125.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/29.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/46609.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/1216.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/1826.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/39096.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/10190.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/54023.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/55193.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/41776.m4a',
+				],
+				prop: 'volume',
+				label: (/ru/).test(navigator.language) ? 'Громкость' : 'Volume',
 			},
 		];
 
 		for(let setting of settingsList){
 			const group = el('div', { class: 'memessages--sidebar--setting' });
 			const label = el('span');
-			const toggle = el('div', { class: 'memessages--toggle' });
 			label.innerText = setting.label;
 			group.append(label);
-			group.append(toggle);
 			sidebarSettings.append(group);
 
-			if( this.settings[setting.prop] )
-				toggle.classList.add('on');
+			const getRandomSound = () => (setting?.sounds ?? [])?.[
+				Math.floor(Math.random() * (setting?.sounds?.length ?? 0))
+			];
 
-			toggle.addEventListener('click', async () => {
-				toggle.classList.toggle('on');
+			switch(setting.type){
+				case 'toggle':
+					const toggle = el('div', { class: 'memessages--toggle' });
+					group.append(toggle);
 
-				this.settings = {
-					...this.settings,
-					[setting.prop]: !this.settings[setting.prop],
-				};
+					if( this.settings[setting.prop] )
+						toggle.classList.add('on');
 
-				if( setting.sound && this.settings[setting.prop] )
-					await this.play(setting.sound);
-			});
+					toggle.addEventListener('click', async () => {
+						toggle.classList.toggle('on');
+
+						this.settings = {
+							...this.settings,
+							[setting.prop]: !this.settings[setting.prop],
+						};
+
+						const sound = getRandomSound();
+						if( sound && this.settings[setting.prop] )
+							await this.play(sound);
+					});
+					break;
+
+				case 'slider':
+					const slider = el('div', { class: 'memessages--slider' });
+					group.append(slider);
+
+					let value = this.settings[setting.prop];
+					slider.setAttribute('style', `--value:${ value }`);
+
+					let enabled = false;
+					const onChange = e => {
+						if( !enabled ) return;
+
+						requestAnimationFrame(async () => {
+							const bounds = slider.getBoundingClientRect();
+
+							let newValue = Math.max(0, (
+								Math.min(1, (
+									(e.clientX - bounds.x) / bounds.width
+								))
+							));
+
+							slider.setAttribute('style', `--value:${ newValue }`);
+
+							this.aggregateAudio(audio => audio.volume = newValue);
+
+							this.settings = {
+								...this.settings,
+								[setting.prop]: newValue,
+							};
+						});
+					};
+
+					slider.addEventListener('mousedown', e => {
+						enabled = true;
+						onChange(e);
+					});
+
+					document.addEventListener('mousemove', onChange);
+
+					document.addEventListener('mouseup', async e => {
+						if( !enabled ) return;
+						
+						enabled = false;
+
+						const sound = getRandomSound();
+						if( sound && this.settings[setting.prop] != value )
+							await this.play(sound, {
+								props: {
+									volume: this.settings[setting.prop],
+								},
+							});
+
+						value = this.settings[setting.prop];
+					});
+					break;
+			}
 		}
 
 		mount(sidebar, '[class^="app-"]');
@@ -569,6 +666,7 @@ module.exports = class Memessages {
 			.memessages--sidebar--close{
 				margin: -10px;
 				padding: 10px;
+				font-size: 25px;
 				cursor: pointer;
 			}
 
@@ -589,6 +687,7 @@ module.exports = class Memessages {
 				display: flex;
 				justify-content: space-between;
 				align-items: center;
+				gap: 20px;
 			}
 
 			.memessages--toggle{
@@ -620,6 +719,47 @@ module.exports = class Memessages {
 
 			.memessages--toggle.on:after{
 				transform: translateX(15px);
+			}
+
+			.memessages--slider{
+				position: relative;
+				margin: 0 8px;
+				width: 100%;
+				height: 10px;
+				background: #555;
+				border-radius: 100px;
+				--value: 0;
+			}
+
+			.memessages--slider:before{
+				content: '';
+				position: absolute;
+				top: 0;
+				left: 0;
+				width: calc(var(--value) * 100%);
+				height: 100%;
+				background: #7289da;
+				border-radius: 100px;
+			}
+
+			.memessages--slider:after{
+				content: '';
+				position: absolute;
+				top: 50%;
+				left: calc(var(--value) * 100%);
+				width: 16px;
+				height: 16px;
+				margin-top: -8px;
+				margin-left: -8px;
+				background: #fff;
+				border-radius: 50%;
+				box-shadow: 0 2px 5px 1px rgba(0, 0, 0, 0.3);
+				cursor: grab;
+			}
+
+			.memessages--slider:active,
+			.memessages--slider:active:after{
+				cursor: grabbing;
 			}
 		`);
 
