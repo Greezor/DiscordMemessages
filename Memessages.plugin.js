@@ -34,7 +34,6 @@ module.exports = class Memessages {
 
 		this.launchedAt = 0;
 		this.lastMessageID = null;
-		this.channelFocus = null;
 		this.muted = false;
 
 		this.audios = [];
@@ -50,6 +49,22 @@ module.exports = class Memessages {
 	set pluginEnabled(value)
 	{
 		this.launchedAt = value ? Date.now() : null;
+	}
+
+	get settings()
+	{
+		const defaultSettings = {
+			memeChannels: [],
+		};
+
+		return Object.assign({}, defaultSettings, (
+			BdApi.loadData('Memessages', 'settings') ?? {}
+		));
+	}
+
+	set settings(value)
+	{
+		BdApi.saveData('Memessages', 'settings', value);
 	}
 
 	get dispatcher()
@@ -107,11 +122,7 @@ module.exports = class Memessages {
 			||
 			this.lastMessageID == message.id
 			||
-			(
-				!!this.channelFocus
-				&&
-				this.channelFocus != channelId
-			)
+			!this.settings.memeChannels.includes(channelId)
 		)	return;
 
 		this.lastMessageID = message.id;
@@ -177,21 +188,27 @@ module.exports = class Memessages {
 
 		const findAll = selector => document.querySelectorAll(selector);
 
-		const mount = (el, to, autoUnmount = true) => {
-			find(to).append(el);
+		const mount = (el, selector, firstMount = true) => {
+			const parent = find(selector);
+
+			if( !parent ){
+				if( !firstMount )
+					document.addEventListener('click', () => {
+						setTimeout(() => mount(el, selector, false), 100);
+					}, { capture: true, once: true });
+
+				return;
+			}
+
+			parent.append(el);
 
 			BdApi.onRemoved(el, () => {
 				if( this.launchedAt === currentLaunch )
-					mount(el, to, false);
+					mount(el, selector, false);
 			});
 
-			if( autoUnmount ){
-				const beforeUnrender = this.unrender;
-				this.unrender = () => {
-					beforeUnrender();
-					el.remove();
-				};
-			}
+			if( firstMount )
+				this.extendUnrender(() => el.remove());
 		};
 
 		
@@ -233,11 +250,56 @@ module.exports = class Memessages {
 		const channelBtnImg = el('img', { src: this.memeIcon });
 		channelBtn.append(channelBtnImg);
 
+		const currentChannelId = this.channelStore.getChannelId();
+
+		if( !currentChannelId )
+			channelBtn.classList.add('hide');
+
+		if( this.settings.memeChannels.includes(currentChannelId) )
+			channelBtn.classList.add('on');
+
 		channelBtn.addEventListener('click', () => {
 			channelBtn.classList.toggle('on');
 
-			if( channelBtn.classList.contains('on') )
+			const channelId = this.channelStore.getChannelId();
+
+			if( this.settings.memeChannels.includes(channelId) ){
+				this.settings = {
+					...this.settings,
+					memeChannels: this.settings.memeChannels
+						.filter(id => id != channelId),
+				};
+			}else{
+				this.settings = {
+					...this.settings,
+					memeChannels: [
+						...this.settings.memeChannels,
+						channelId,
+					]
+				};
+
 				channelBtnImg.setAttribute('src', this.memeIcon);
+			}
+		});
+
+		const onChannelChange = ({ channelId }) => {
+			if( this.launchedAt != currentLaunch ) return;
+
+			if( channelId ){
+				channelBtn.classList.remove('hide');
+
+				if( this.settings.memeChannels.includes(channelId) )
+					channelBtn.classList.add('on');
+				else
+					channelBtn.classList.remove('on');
+			}
+			else
+				channelBtn.classList.add('hide');
+		};
+
+		this.dispatcher.subscribe('CHANNEL_SELECT', onChannelChange);
+		this.extendUnrender(() => {
+			this.dispatcher.unsubscribe('CHANNEL_SELECT', onChannelChange);
 		});
 
 		mount(channelBtn, '[class^="toolbar"]');
@@ -261,12 +323,20 @@ module.exports = class Memessages {
 		mount(sidebarBtn, '[class^="toolbar"]');
 	}
 
+	extendUnrender(func)
+	{
+		const beforeUnrender = this.unrender;
+		this.unrender = () => {
+			beforeUnrender();
+			func();
+		};
+	}
+
 	async start()
 	{
 		this.pluginEnabled = true;
 
 		this.dispatcher.subscribe('MESSAGE_CREATE', e => this.onMessage(e));
-		// this.dispatcher.subscribe('CHANNEL_SELECT', e => {});
 
 		BdApi.injectCSS('Memessages', `
 			@import url("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.3.0/css/all.min.css");
@@ -339,12 +409,20 @@ module.exports = class Memessages {
 				cursor: pointer;
 			}
 
+			.memessages--toolbar-btn i{
+				opacity: 0.85;
+			}
+
 			.memessages--toolbar-btn img{
 				position: absolute;
 				bottom: 0;
 				right: 0;
 				width: 18px;
 				height: 18px;
+			}
+
+			.memessages--toolbar-btn:hover i{
+				opacity: 1;
 			}
 
 			.memessages--channel-btn{
@@ -401,7 +479,6 @@ module.exports = class Memessages {
 		this.audios = [];
 
 		this.dispatcher.unsubscribe('MESSAGE_CREATE', e => this.onMessage(e));
-		// this.dispatcher.unsubscribe('CHANNEL_SELECT', e => {});
 		BdApi.clearCSS('Memessages');
 		this.unrender();
 
