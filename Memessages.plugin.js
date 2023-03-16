@@ -37,12 +37,19 @@ module.exports = class Memessages {
 		this.channelFocus = null;
 		this.muted = false;
 
+		this.audios = [];
+
 		this.unrender = () => {};
 	}
 
 	get pluginEnabled()
 	{
 		return !!this.launchedAt;
+	}
+
+	set pluginEnabled(value)
+	{
+		this.launchedAt = value ? Date.now() : null;
 	}
 
 	get dispatcher()
@@ -120,16 +127,21 @@ module.exports = class Memessages {
 
 		if( !sounds.length ) return;
 
-		const audioUrl = `https://api.meowpad.me/v2/sounds/preview/${
-			sounds[0].id
-		}.m4a`;
-
-		await this.play(audioUrl);
+		await this.play(`https://api.meowpad.me/v2/sounds/preview/${ sounds[0].id }.m4a`, {
+			props: {
+				muted: this.muted,
+			},
+		});
 	}
 
-	async play(url)
+	async play(url, params)
 	{
 		const audio = new Audio(url);
+
+		for(let [ prop, value ] of Object.entries(params.props))
+			audio[prop] = value;
+
+		this.audios.push(audio);
 
 		audio.addEventListener('canplaythrough', () => {
 			audio.play();
@@ -138,6 +150,14 @@ module.exports = class Memessages {
 		await new Promise(resolve => {
 			audio.addEventListener('ended', resolve);
 		});
+
+		this.audios.splice(this.audios.indexOf(audio), 1);
+	}
+
+	async aggregateAudio(func)
+	{
+		for(let audio of this.audios)
+			await func(audio);
 	}
 
 	render()
@@ -190,6 +210,8 @@ module.exports = class Memessages {
 			this.muted = !this.muted;
 			muteBtn.classList.toggle('on');
 
+			this.aggregateAudio(audio => audio.muted = this.muted);
+
 			if( !this.muted )
 				muteBtnImg.setAttribute('src', this.memeIcon);
 		});
@@ -241,9 +263,10 @@ module.exports = class Memessages {
 
 	async start()
 	{
-		this.launchedAt = Date.now();
+		this.pluginEnabled = true;
 
 		this.dispatcher.subscribe('MESSAGE_CREATE', e => this.onMessage(e));
+		// this.dispatcher.subscribe('CHANNEL_SELECT', e => {});
 
 		BdApi.injectCSS('Memessages', `
 			@import url("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.3.0/css/all.min.css");
@@ -254,7 +277,26 @@ module.exports = class Memessages {
 			}
 			
 			.memessages--mute-toggle i{
+				position: relative;
 				transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+			}
+
+			.memessages--mute-toggle i:before{
+				clip-path: polygon(0% 0%, 0% 100%, 100% 100%, 100% 90%, 0% 0%, 100% 0%, 100% 55%, 20% 0%);
+			}
+
+			.memessages--mute-toggle i:after{
+				content: '';
+				position: absolute;
+				top: 50%;
+				left: 50%;
+				width: 2px;
+				height: 24px;
+				margin-top: -12px;
+				margin-left: -1px;
+				background: currentColor;
+				border-radius: 2px;
+				transform: rotate(-45deg);
 			}
 
 			.memessages--mute-toggle img{
@@ -272,6 +314,14 @@ module.exports = class Memessages {
 
 			.memessages--mute-toggle.on i{
 				transform: translateX(-7px);
+			}
+
+			.memessages--mute-toggle.on i:before{
+				clip-path: none;
+			}
+
+			.memessages--mute-toggle.on i:after{
+				display: none;
 			}
 
 			.memessages--mute-toggle.on img{
@@ -345,9 +395,13 @@ module.exports = class Memessages {
 
 	stop()
 	{
-		this.launchedAt = 0;
+		this.pluginEnabled = false;
+
+		this.aggregateAudio(audio => audio.pause());
+		this.audios = [];
 
 		this.dispatcher.unsubscribe('MESSAGE_CREATE', e => this.onMessage(e));
+		// this.dispatcher.unsubscribe('CHANNEL_SELECT', e => {});
 		BdApi.clearCSS('Memessages');
 		this.unrender();
 
