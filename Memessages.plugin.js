@@ -546,7 +546,7 @@ module.exports = class Memessages {
 				transition: all 0.3s ease;
 				overflow-x: hidden;
 				overflow-y: scroll;
-				z-index: 999;
+				z-index: 99999;
 			}
 
 			.memessages--sidebar::-webkit-scrollbar{
