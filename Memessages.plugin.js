@@ -12,7 +12,6 @@
 // сочетания клавиш для отмены звуков, глушилки и избранного
 // история звуков (причём всех, не только своих)
 // всплывашки что за звук играет
-// добавлять ссылку на звук к сообщению для тех у кого нет плагина
 // резервный сервер myinstants
 // прерывать звук если сообщение удалили/отредачили (сочетание для быстрого удаления)
 
@@ -28,6 +27,8 @@ module.exports = class Memessages {
 		this.sidebar = false;
 
 		this.audios = [];
+
+		this.refs = {};
 
 		this.unrender = () => {};
 	}
@@ -46,8 +47,9 @@ module.exports = class Memessages {
 	{
 		const defaultSettings = {
 			memeChannels: [],
-			chaosMode: false,
 			volume: 0.5,
+			history: false,
+			chaosMode: false,
 		};
 
 		return Object.assign({}, defaultSettings, (
@@ -115,6 +117,8 @@ module.exports = class Memessages {
 			||
 			this.lastMessageID == message.id
 			||
+			!message.content
+			||
 			(
 				!this.settings.chaosMode
 				&&
@@ -128,9 +132,14 @@ module.exports = class Memessages {
 
 		if( memeUrl )
 			await this.play(memeUrl, {
+				addToHistory: this.settings.history,
 				props: {
 					muted: this.muted,
 					volume: this.settings.volume,
+					memessages: {
+						message,
+						channelId,
+					},
 				},
 			});
 	}
@@ -160,15 +169,35 @@ module.exports = class Memessages {
 			for(let [ prop, value ] of Object.entries(params.props))
 				audio[prop] = value;
 
+		let card = null;
+
+		if( params.addToHistory ){
+			audio.controls = true;
+			
+			card = document.createElement('div');
+			let label = document.createElement('span');
+			card.setAttribute('class', 'memessages--sidebar--card');
+			label.innerText = audio?.memessages?.message?.content ?? '';
+			card.append(label);
+			this.refs.history.prepend(card);
+		}
+
 		this.audios.push(audio);
 
 		audio.addEventListener('canplaythrough', () => {
 			audio.play();
-		});
+		}, { once: true });
 
 		await new Promise(resolve => {
 			audio.addEventListener('ended', resolve);
 		});
+
+		if( params.addToHistory ){
+			audio.muted = false;
+			audio.volume = 1;
+			audio.currentTime = 0;
+			card.append(audio);
+		}
 
 		this.audios.splice(this.audios.indexOf(audio), 1);
 	}
@@ -342,9 +371,12 @@ module.exports = class Memessages {
 		const sidebarSettings = el('div', { class: 'memessages--sidebar--card' });
 		const sidebarCloseBtn = el('i', { class: 'memessages--sidebar--close fa-solid fa-angle-right' });
 		const sidebarCloseBtnWrapper = el('div', { style: 'text-align:right' });
+		const history = el('div', { class: 'memessages--sidebar--history' });
+		this.refs.history = history;
 		sidebarCloseBtnWrapper.append(sidebarCloseBtn);
 		sidebarSettings.append(sidebarCloseBtnWrapper);
 		sidebar.append(sidebarSettings);
+		sidebar.append(history);
 
 		sidebarCloseBtn.addEventListener('click', () => {
 			this.sidebar = false;
@@ -353,18 +385,7 @@ module.exports = class Memessages {
 
 		const settingsList = [
 			{
-				type: 'toggle',
-				sounds: [
-					'https://api.meowpad.me/v2/sounds/preview/78899.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/78898.m4a',
-				],
-				prop: 'chaosMode',
-				label: (/ru/).test(navigator.language) ? 'Режим Хаоса!' : 'Chaos Control!',
-			},
-			{
 				type: 'slider',
-				min: 0,
-				max: 1,
 				sounds: [
 					'https://api.meowpad.me/v2/sounds/preview/57562.m4a',
 					'https://api.meowpad.me/v2/sounds/preview/48886.m4a',
@@ -386,6 +407,30 @@ module.exports = class Memessages {
 				],
 				prop: 'volume',
 				label: (/ru/).test(navigator.language) ? 'Громкость' : 'Volume',
+			},
+			{
+				type: 'toggle',
+				sounds: [
+					'https://api.meowpad.me/v2/sounds/preview/31297.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/4898.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/8761.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/24702.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/19517.m4a',
+				],
+				prop: 'history',
+				label: (/ru/).test(navigator.language) ? 'Отображать историю звуков' : 'Show sound history',
+				action: () => {
+					history.innerHTML = '';
+				},
+			},
+			{
+				type: 'toggle',
+				sounds: [
+					'https://api.meowpad.me/v2/sounds/preview/78899.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/78898.m4a',
+				],
+				prop: 'chaosMode',
+				label: (/ru/).test(navigator.language) ? 'Режим Хаоса!' : 'Chaos Mode!',
 			},
 		];
 
@@ -419,6 +464,8 @@ module.exports = class Memessages {
 						const sound = getRandomSound();
 						if( sound && this.settings[setting.prop] )
 							await this.play(sound);
+
+						setting?.action?.(this.settings[setting.prop]);
 					});
 					break;
 
@@ -474,6 +521,8 @@ module.exports = class Memessages {
 							});
 
 						value = this.settings[setting.prop];
+
+						setting?.action?.(this.settings[setting.prop]);
 					});
 					break;
 			}
@@ -668,6 +717,7 @@ module.exports = class Memessages {
 			.memessages--sidebar--card{
 				display: flex;
 				flex-direction: column;
+				margin-bottom: 20px;
 				padding: 20px;
 				gap: 20px;
 				background: #fff;
@@ -676,6 +726,18 @@ module.exports = class Memessages {
 				line-height: 130%;
 				color: #333;
 				box-shadow: inset 0 -1px 0 1px rgba(0, 0, 0, 0.1);
+			}
+
+			.memessages--sidebar--card > img,
+			.memessages--sidebar--card > audio{
+				width: 100%;
+			}
+
+			.memessages--sidebar--history{
+				display: flex;
+				flex-direction: column;
+				word-break: break-all;
+				user-select: text;
 			}
 
 			.memessages--sidebar--setting{
