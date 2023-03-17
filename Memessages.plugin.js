@@ -3,14 +3,13 @@
  * @author Greezor
  * @authorId 382062281623863298
  * @description Meme notifications
- * @version 0.2.0
+ * @version 0.3.0
  */
 
 // окно с браузером звуков и/или подсказки autocomplete
 // модификаторы в тексте типа [х2] (проиграть два раза или больше), также отступ и пагинация (может даже громкость/скорость/питч)
 // избранные звуки (может типа мини саундпад или просто коллекция любимых)
 // сочетания клавиш для отмены звуков, глушилки и избранного
-// история звуков (причём всех, не только своих)
 // всплывашки что за звук играет
 // резервный сервер myinstants
 // прерывать звук если сообщение удалили/отредачили (сочетание для быстрого удаления)
@@ -70,6 +69,11 @@ module.exports = class Memessages {
 	get channelStore()
 	{
 		return BdApi.findModuleByProps('getLastSelectedChannelId');
+	}
+
+	get isLangRU()
+	{
+		return (/ru/).test(navigator.language);
 	}
 
 	fetch(options)
@@ -169,12 +173,11 @@ module.exports = class Memessages {
 			for(let [ prop, value ] of Object.entries(params.props))
 				audio[prop] = value;
 
-		let card = null;
-
+		let historyCard = null;
 		if( params.addToHistory ){
 			audio.controls = true;
 			
-			card = document.createElement('div');
+			let card = historyCard = document.createElement('div');
 			let label = document.createElement('span');
 			card.setAttribute('class', 'memessages--sidebar--card');
 			label.innerText = audio?.memessages?.message?.content ?? '';
@@ -196,7 +199,7 @@ module.exports = class Memessages {
 			audio.muted = false;
 			audio.volume = 1;
 			audio.currentTime = 0;
-			card.append(audio);
+			historyCard.append(audio);
 		}
 
 		this.audios.splice(this.audios.indexOf(audio), 1);
@@ -250,8 +253,12 @@ module.exports = class Memessages {
 
 		
 
+		const muteBtnLabelMute = this.isLangRU ? 'Отключить звук' : 'Mute';
+		const muteBtnLabelUnmute = this.isLangRU ? 'Включить звук' : 'Unmute';
 		const muteBtn = el('div', {
 			class: `${ find('[class^="winButtonMinMax"]').classList.value } memessages--mute-toggle on`,
+			['data-memessages-tooltip']: true,
+			style: `--text:'${ muteBtnLabelMute }'; --ws:nowrap; --offset:calc(-100% + 50px);`,
 		});
 
 		const muteBtnIcon = el('i', { class: 'fa-solid fa-volume-off' });
@@ -266,16 +273,24 @@ module.exports = class Memessages {
 
 			this.aggregateAudio(audio => audio.muted = this.muted);
 
-			if( !this.muted )
+			muteBtn.style.setProperty('--text', `'${ muteBtnLabelUnmute }'`);
+
+			if( !this.muted ){
 				muteBtnImg.setAttribute('src', this.memeIcon);
+				muteBtn.style.setProperty('--text', `'${ muteBtnLabelMute }'`);
+			}
 		});
 
 		mount(muteBtn, '[class^="typeWindows"][class*="titleBar"]');
 
 
 
+		const channelBtnLabelOn = this.isLangRU ? 'Включить мемы в канале' : 'Enable memes in a channel';
+		const channelBtnLabelOff = this.isLangRU ? 'Выключить мемы в канале' : 'Disable memes in a channel';
 		const channelBtn = el('div', {
 			class: 'memessages--toolbar-btn memessages--channel-btn',
+			['data-memessages-tooltip']: true,
+			style: `--text:'${ channelBtnLabelOn }'; --ws:nowrap; --offset:calc(-100% + 30px);`,
 		});
 
 		const channelBtnIconOn = el('i', { class: 'memessages--channel-btn--icon-on fa-solid fa-bell' });
@@ -292,8 +307,10 @@ module.exports = class Memessages {
 		if( !currentChannelId )
 			channelBtn.classList.add('hide');
 
-		if( this.settings.memeChannels.includes(currentChannelId) )
+		if( this.settings.memeChannels.includes(currentChannelId) ){
 			channelBtn.classList.add('on');
+			channelBtn.style.setProperty('--text', `'${ channelBtnLabelOff }'`);
+		}
 
 		channelBtn.addEventListener('click', () => {
 			channelBtn.classList.toggle('on');
@@ -306,6 +323,8 @@ module.exports = class Memessages {
 					memeChannels: this.settings.memeChannels
 						.filter(id => id != channelId),
 				};
+
+				channelBtn.style.setProperty('--text', `'${ channelBtnLabelOn }'`);
 			}else{
 				this.settings = {
 					...this.settings,
@@ -316,6 +335,7 @@ module.exports = class Memessages {
 				};
 
 				channelBtnImg.setAttribute('src', this.memeIcon);
+				channelBtn.style.setProperty('--text', `'${ channelBtnLabelOff }'`);
 			}
 		});
 
@@ -325,10 +345,13 @@ module.exports = class Memessages {
 			if( channelId ){
 				channelBtn.classList.remove('hide');
 
-				if( this.settings.memeChannels.includes(channelId) )
+				if( this.settings.memeChannels.includes(channelId) ){
 					channelBtn.classList.add('on');
-				else
+					channelBtn.style.setProperty('--text', `'${ channelBtnLabelOff }'`);
+				}else{
 					channelBtn.classList.remove('on');
+					channelBtn.style.setProperty('--text', `'${ channelBtnLabelOn }'`);
+				}
 			}
 			else
 				channelBtn.classList.add('hide');
@@ -406,7 +429,7 @@ module.exports = class Memessages {
 					'https://api.meowpad.me/v2/sounds/preview/41776.m4a',
 				],
 				prop: 'volume',
-				label: (/ru/).test(navigator.language) ? 'Громкость' : 'Volume',
+				label: this.isLangRU ? 'Громкость' : 'Volume',
 			},
 			{
 				type: 'toggle',
@@ -418,7 +441,7 @@ module.exports = class Memessages {
 					'https://api.meowpad.me/v2/sounds/preview/19517.m4a',
 				],
 				prop: 'history',
-				label: (/ru/).test(navigator.language) ? 'Отображать историю звуков' : 'Show sound history',
+				label: this.isLangRU ? 'Отображать историю звуков' : 'Show sound history',
 				action: () => {
 					history.innerHTML = '';
 				},
@@ -430,7 +453,7 @@ module.exports = class Memessages {
 					'https://api.meowpad.me/v2/sounds/preview/78898.m4a',
 				],
 				prop: 'chaosMode',
-				label: (/ru/).test(navigator.language) ? 'Режим Хаоса!' : 'Chaos Mode!',
+				label: this.isLangRU ? 'Режим Хаоса!' : 'Chaos Mode!',
 			},
 		];
 
@@ -548,6 +571,40 @@ module.exports = class Memessages {
 
 		BdApi.injectCSS('Memessages', `
 			@import url("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.3.0/css/all.min.css");
+
+			[data-memessages-tooltip]{
+				position: relative;
+				--text: '';
+				--width: auto;
+				--offset: 0px;
+				--ws: normal;
+			}
+
+			[data-memessages-tooltip]:after{
+				content: var(--text);
+				position: absolute;
+				padding: 10px;
+				margin-top: -10px;
+				top: calc(100% + 10px);
+				left: 0;
+				width: var(--width);
+				transform: translateX(var(--offset));
+				background: #fff;
+				border-radius: 10px;
+				font-size: 14px;
+				line-height: 130%;
+				white-space: var(--ws);
+				color: #333;
+				box-shadow: 0 2px 5px 1px rgba(0, 0, 0, 0.3);
+				pointer-events: none;
+				transition: all 0.2s ease;
+				opacity: 0;
+			}
+
+			[data-memessages-tooltip]:hover:after{
+				margin-top: 0px;
+				opacity: 1;
+			}
 
 			.memessages--mute-toggle{
 				position: relative;
