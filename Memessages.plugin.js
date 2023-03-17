@@ -3,7 +3,7 @@
  * @author Greezor
  * @authorId 382062281623863298
  * @description Meme notifications
- * @version 0.3.1
+ * @version 0.3.2
  */
 
 // окно с браузером звуков и/или подсказки autocomplete
@@ -252,7 +252,7 @@ module.exports = class Memessages {
 			card.append(labelWrapper);
 			this.refs.history.prepend(card);
 
-			if( this.historyLength >= 1000 )
+			if( this.historyLength >= 500 )
 				this.$.find('.memessages--sidebar--card:last-child', this.refs.history)
 					.remove();
 			else
