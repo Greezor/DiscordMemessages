@@ -3,7 +3,7 @@
  * @author Greezor
  * @authorId 382062281623863298
  * @description Meme notifications
- * @version 0.3.0
+ * @version 0.3.1
  */
 
 // окно с браузером звуков и/или подсказки autocomplete
@@ -437,8 +437,6 @@ module.exports = class Memessages {
 					'https://api.meowpad.me/v2/sounds/preview/31297.m4a',
 					'https://api.meowpad.me/v2/sounds/preview/4898.m4a',
 					'https://api.meowpad.me/v2/sounds/preview/8761.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/24702.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/19517.m4a',
 				],
 				prop: 'history',
 				label: this.isLangRU ? 'Отображать историю звуков' : 'Show sound history',
