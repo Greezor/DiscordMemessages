@@ -22,11 +22,9 @@ module.exports = class Memessages {
 
 		this.launchedAt = 0;
 		this.lastMessageID = null;
-		this.muted = false;
-		this.sidebar = false;
-
 		this.audios = [];
-
+		this.sidebar = false;
+		this.historyLength = 0;
 		this.refs = {};
 
 		this.unrender = () => {};
@@ -39,41 +37,96 @@ module.exports = class Memessages {
 
 	set pluginEnabled(value)
 	{
-		this.launchedAt = value ? Date.now() : null;
+		this.launchedAt = value ? Date.now() : 0;
 	}
 
 	get settings()
 	{
 		const defaultSettings = {
 			memeChannels: [],
+			muted: false,
 			volume: 0.5,
 			history: false,
 			chaosMode: false,
 		};
 
 		return Object.assign({}, defaultSettings, (
-			BdApi.loadData('Memessages', 'settings') ?? {}
+			BdApi.Data.load(this.meta.name, 'settings') ?? {}
 		));
 	}
 
 	set settings(value)
 	{
-		BdApi.saveData('Memessages', 'settings', value);
+		BdApi.Data.save(this.meta.name, 'settings', value);
 	}
 
 	get dispatcher()
 	{
-		return BdApi.findModuleByProps('dispatch', 'subscribe');
+		return BdApi.Webpack.getModule(m => m.subscribe && m.unsubscribe);
 	}
 
 	get channelStore()
 	{
-		return BdApi.findModuleByProps('getLastSelectedChannelId');
+		return BdApi.Webpack.getModule(m => m.getLastSelectedChannelId);
 	}
 
 	get isLangRU()
 	{
 		return (/ru/).test(navigator.language);
+	}
+
+	get $()
+	{
+		const currentLaunch = this.launchedAt;
+
+		const el = (tag, attrs = {}) => {
+			let elem = document.createElement(tag);
+
+			for(let [ attr, value ] of Object.entries(attrs))
+				elem.setAttribute(attr, value);
+
+			return elem;
+		};
+
+		const find = (selector, parent = null) => (parent ?? document).querySelector(selector);
+
+		const findAll = (selector, parent = null) => (parent ?? document).querySelectorAll(selector);
+
+		const mount = (el, selector, firstMount = true) => {
+			const parent = find(selector);
+
+			if( !parent ){
+				if( !firstMount )
+					document.addEventListener('click', () => {
+						setTimeout(() => mount(el, selector, false), 100);
+					}, { capture: true, once: true });
+
+				return;
+			}
+
+			parent.append(el);
+
+			BdApi.DOM.onRemoved(el, () => {
+				if( this.launchedAt === currentLaunch )
+					mount(el, selector, false);
+			});
+
+			if( firstMount )
+				this.extendUnrender(() => el.remove());
+		};
+
+		const css = (el, styles = {}) => {
+			for(let [ prop, value ] of Object.entries(styles))
+				el.style.setProperty(prop, value);
+		};
+
+		return {
+			el,
+			find,
+			findAll,
+			mount,
+			css,
+		};
 	}
 
 	fetch(options)
@@ -138,7 +191,7 @@ module.exports = class Memessages {
 			await this.play(memeUrl, {
 				addToHistory: this.settings.history,
 				props: {
-					muted: this.muted,
+					muted: this.settings.muted,
 					volume: this.settings.volume,
 					memessages: {
 						message,
@@ -177,12 +230,33 @@ module.exports = class Memessages {
 		if( params.addToHistory ){
 			audio.controls = true;
 			
-			let card = historyCard = document.createElement('div');
-			let label = document.createElement('span');
-			card.setAttribute('class', 'memessages--sidebar--card');
+			let card = historyCard = this.$.el('div', { class: 'memessages--sidebar--card' });
+			let labelWrapper = this.$.el('div');
+			let label = this.$.el('span', { ['data-memessages-tooltip']: true });
+			this.$.css(label, {
+				'--text': `'${ this.isLangRU ? 'Копировать' : 'Copy' }'`,
+				'--ws': 'nowrap',
+				'cursor': 'pointer',
+			});
+
 			label.innerText = audio?.memessages?.message?.content ?? '';
-			card.append(label);
+			label.addEventListener('click', () => {
+				DiscordNative.clipboard.copy(label.innerText);
+				BdApi.UI.showToast(this.isLangRU ? 'Скопировано' : 'Copied', {
+					type: 'info',
+					timeout: 1000,
+				});
+			});
+
+			labelWrapper.append(label);
+			card.append(labelWrapper);
 			this.refs.history.prepend(card);
+
+			if( this.historyLength >= 1000 )
+				this.$.find('.memessages--sidebar--card:last-child', this.refs.history)
+					.remove();
+			else
+				this.historyLength++;
 		}
 
 		this.audios.push(audio);
@@ -215,91 +289,74 @@ module.exports = class Memessages {
 	{
 		const currentLaunch = this.launchedAt;
 
-		const el = (tag, attrs = {}) => {
-			let elem = document.createElement(tag);
-
-			for(let [ attr, value ] of Object.entries(attrs))
-				elem.setAttribute(attr, value);
-
-			return elem;
-		};
-
-		const find = selector => document.querySelector(selector);
-
-		const findAll = selector => document.querySelectorAll(selector);
-
-		const mount = (el, selector, firstMount = true) => {
-			const parent = find(selector);
-
-			if( !parent ){
-				if( !firstMount )
-					document.addEventListener('click', () => {
-						setTimeout(() => mount(el, selector, false), 100);
-					}, { capture: true, once: true });
-
-				return;
-			}
-
-			parent.append(el);
-
-			BdApi.onRemoved(el, () => {
-				if( this.launchedAt === currentLaunch )
-					mount(el, selector, false);
-			});
-
-			if( firstMount )
-				this.extendUnrender(() => el.remove());
-		};
-
 		
 
 		const muteBtnLabelMute = this.isLangRU ? 'Отключить звук' : 'Mute';
 		const muteBtnLabelUnmute = this.isLangRU ? 'Включить звук' : 'Unmute';
-		const muteBtn = el('div', {
-			class: `${ find('[class^="winButtonMinMax"]').classList.value } memessages--mute-toggle on`,
+		const muteBtn = this.$.el('div', {
+			class: `${ this.$.find('[class^="winButtonMinMax"]').classList.value } memessages--mute-toggle on`,
 			['data-memessages-tooltip']: true,
-			style: `--text:'${ muteBtnLabelMute }'; --ws:nowrap; --offset:calc(-100% + 50px);`,
 		});
 
-		const muteBtnIcon = el('i', { class: 'fa-solid fa-volume-off' });
+		this.$.css(muteBtn, {
+			'--text': `'${ muteBtnLabelMute }'`,
+			'--offset': 'calc(-100% + 50px)',
+			'--ws': 'nowrap',
+		});
+
+		const muteBtnIcon = this.$.el('i', { class: 'fa-solid fa-volume-off' });
 		muteBtn.append(muteBtnIcon);
 
-		const muteBtnImg = el('img', { src: this.memeIcon });
+		const muteBtnImg = this.$.el('img', { src: this.memeIcon });
 		muteBtn.append(muteBtnImg);
 
+		if( this.settings.muted ){
+			muteBtn.classList.remove('on');
+			this.$.css(muteBtn, { '--text': `'${ muteBtnLabelUnmute }'` });
+		}
+
 		muteBtn.addEventListener('click', () => {
-			this.muted = !this.muted;
+			this.settings = {
+				...this.settings,
+				muted: !this.settings.muted,
+			};
+
 			muteBtn.classList.toggle('on');
 
-			this.aggregateAudio(audio => audio.muted = this.muted);
+			this.aggregateAudio(audio => audio.muted = this.settings.muted);
 
-			muteBtn.style.setProperty('--text', `'${ muteBtnLabelUnmute }'`);
+			this.$.css(muteBtn, { '--text': `'${ muteBtnLabelUnmute }'` });
 
-			if( !this.muted ){
+			if( !this.settings.muted ){
 				muteBtnImg.setAttribute('src', this.memeIcon);
-				muteBtn.style.setProperty('--text', `'${ muteBtnLabelMute }'`);
+				this.$.css(muteBtn, { '--text': `'${ muteBtnLabelMute }'` });
 			}
 		});
 
-		mount(muteBtn, '[class^="typeWindows"][class*="titleBar"]');
+		this.$.mount(muteBtn, '[class^="typeWindows"][class*="titleBar"]');
 
 
 
 		const channelBtnLabelOn = this.isLangRU ? 'Включить мемы в канале' : 'Enable memes in a channel';
 		const channelBtnLabelOff = this.isLangRU ? 'Выключить мемы в канале' : 'Disable memes in a channel';
-		const channelBtn = el('div', {
+		const channelBtn = this.$.el('div', {
 			class: 'memessages--toolbar-btn memessages--channel-btn',
 			['data-memessages-tooltip']: true,
-			style: `--text:'${ channelBtnLabelOn }'; --ws:nowrap; --offset:calc(-100% + 30px);`,
 		});
 
-		const channelBtnIconOn = el('i', { class: 'memessages--channel-btn--icon-on fa-solid fa-bell' });
+		this.$.css(channelBtn, {
+			'--text': `'${ channelBtnLabelOn }'`,
+			'--offset': 'calc(-100% + 30px)',
+			'--ws': 'nowrap',
+		});
+
+		const channelBtnIconOn = this.$.el('i', { class: 'memessages--channel-btn--icon-on fa-solid fa-bell' });
 		channelBtn.append(channelBtnIconOn);
 
-		const channelBtnIconOff = el('i', { class: 'memessages--channel-btn--icon-off fa-solid fa-bell-slash' });
+		const channelBtnIconOff = this.$.el('i', { class: 'memessages--channel-btn--icon-off fa-solid fa-bell-slash' });
 		channelBtn.append(channelBtnIconOff);
 
-		const channelBtnImg = el('img', { src: this.memeIcon });
+		const channelBtnImg = this.$.el('img', { src: this.memeIcon });
 		channelBtn.append(channelBtnImg);
 
 		const currentChannelId = this.channelStore.getChannelId();
@@ -309,7 +366,7 @@ module.exports = class Memessages {
 
 		if( this.settings.memeChannels.includes(currentChannelId) ){
 			channelBtn.classList.add('on');
-			channelBtn.style.setProperty('--text', `'${ channelBtnLabelOff }'`);
+			this.$.css(channelBtn, { '--text': `'${ channelBtnLabelOff }'` });
 		}
 
 		channelBtn.addEventListener('click', () => {
@@ -324,7 +381,7 @@ module.exports = class Memessages {
 						.filter(id => id != channelId),
 				};
 
-				channelBtn.style.setProperty('--text', `'${ channelBtnLabelOn }'`);
+				this.$.css(channelBtn, { '--text': `'${ channelBtnLabelOn }'` });
 			}else{
 				this.settings = {
 					...this.settings,
@@ -335,7 +392,7 @@ module.exports = class Memessages {
 				};
 
 				channelBtnImg.setAttribute('src', this.memeIcon);
-				channelBtn.style.setProperty('--text', `'${ channelBtnLabelOff }'`);
+				this.$.css(channelBtn, { '--text': `'${ channelBtnLabelOff }'` });
 			}
 		});
 
@@ -347,10 +404,10 @@ module.exports = class Memessages {
 
 				if( this.settings.memeChannels.includes(channelId) ){
 					channelBtn.classList.add('on');
-					channelBtn.style.setProperty('--text', `'${ channelBtnLabelOff }'`);
+					this.$.css(channelBtn, { '--text': `'${ channelBtnLabelOff }'` });
 				}else{
 					channelBtn.classList.remove('on');
-					channelBtn.style.setProperty('--text', `'${ channelBtnLabelOn }'`);
+					this.$.css(channelBtn, { '--text': `'${ channelBtnLabelOn }'` });
 				}
 			}
 			else
@@ -362,18 +419,18 @@ module.exports = class Memessages {
 			this.dispatcher.unsubscribe('CHANNEL_SELECT', onChannelChange);
 		});
 
-		mount(channelBtn, '[class^="toolbar"]');
+		this.$.mount(channelBtn, '[class^="toolbar"]');
 
 
 
-		const sidebarBtn = el('div', {
+		const sidebarBtn = this.$.el('div', {
 			class: 'memessages--toolbar-btn',
 		});
 
-		const sidebarBtnIcon = el('i', { class: 'fa-solid fa-bars' });
+		const sidebarBtnIcon = this.$.el('i', { class: 'fa-solid fa-bars' });
 		sidebarBtn.append(sidebarBtnIcon);
 
-		const sidebarBtnImg = el('img', { src: this.memeIcon });
+		const sidebarBtnImg = this.$.el('img', { src: this.memeIcon });
 		sidebarBtn.append(sidebarBtnImg);
 
 		sidebarBtn.addEventListener('click', () => {
@@ -383,27 +440,32 @@ module.exports = class Memessages {
 			sidebarBtnImg.setAttribute('src', this.memeIcon);
 		});
 
-		mount(sidebarBtn, '[class^="toolbar"]');
+		this.$.mount(sidebarBtn, '[class^="toolbar"]');
 
 
 
-		const sidebar = el('div', {
+		const sidebar = this.$.el('div', {
 			class: 'memessages--sidebar',
 		});
 
-		const sidebarSettings = el('div', { class: 'memessages--sidebar--card' });
-		const sidebarCloseBtn = el('i', { class: 'memessages--sidebar--close fa-solid fa-angle-right' });
-		const sidebarCloseBtnWrapper = el('div', { style: 'text-align:right' });
-		const history = el('div', { class: 'memessages--sidebar--history' });
+		const sidebarSettings = this.$.el('div', { class: 'memessages--sidebar--card sticky' });
+		const sidebarCloseBtn = this.$.el('i', { class: 'memessages--sidebar--close fa-solid fa-angle-right' });
+		const history = this.$.el('div', { class: 'memessages--sidebar--history' });
 		this.refs.history = history;
-		sidebarCloseBtnWrapper.append(sidebarCloseBtn);
-		sidebarSettings.append(sidebarCloseBtnWrapper);
+		sidebarSettings.append(sidebarCloseBtn);
 		sidebar.append(sidebarSettings);
 		sidebar.append(history);
 
 		sidebarCloseBtn.addEventListener('click', () => {
 			this.sidebar = false;
 			sidebar.classList.remove('open');
+		});
+
+		sidebar.addEventListener('scroll', () => {
+			if( sidebar.scrollTop > 20 )
+				sidebarSettings.classList.add('shadow');
+			else
+				sidebarSettings.classList.remove('shadow');
 		});
 
 		const settingsList = [
@@ -456,8 +518,8 @@ module.exports = class Memessages {
 		];
 
 		for(let setting of settingsList){
-			const group = el('div', { class: 'memessages--sidebar--setting' });
-			const label = el('span');
+			const group = this.$.el('div', { class: 'memessages--sidebar--setting' });
+			const label = this.$.el('span');
 			label.innerText = setting.label;
 			group.append(label);
 			sidebarSettings.append(group);
@@ -468,7 +530,7 @@ module.exports = class Memessages {
 
 			switch(setting.type){
 				case 'toggle':
-					const toggle = el('div', { class: 'memessages--toggle' });
+					const toggle = this.$.el('div', { class: 'memessages--toggle' });
 					group.append(toggle);
 
 					if( this.settings[setting.prop] )
@@ -491,11 +553,11 @@ module.exports = class Memessages {
 					break;
 
 				case 'slider':
-					const slider = el('div', { class: 'memessages--slider' });
+					const slider = this.$.el('div', { class: 'memessages--slider' });
 					group.append(slider);
 
 					let value = this.settings[setting.prop];
-					slider.setAttribute('style', `--value:${ value }`);
+					this.$.css(slider, { '--value': value });
 
 					let enabled = false;
 					const onChange = e => {
@@ -510,7 +572,7 @@ module.exports = class Memessages {
 								))
 							));
 
-							slider.setAttribute('style', `--value:${ newValue }`);
+							this.$.css(slider, { '--value': newValue });
 
 							this.aggregateAudio(audio => audio.volume = newValue);
 
@@ -549,7 +611,7 @@ module.exports = class Memessages {
 			}
 		}
 
-		mount(sidebar, '[class^="app-"]');
+		this.$.mount(sidebar, '[class^="app-"]');
 	}
 
 	extendUnrender(func)
@@ -567,7 +629,7 @@ module.exports = class Memessages {
 
 		this.dispatcher.subscribe('MESSAGE_CREATE', e => this.onMessage(e));
 
-		BdApi.injectCSS('Memessages', `
+		BdApi.DOM.addStyle(this.meta.name, `
 			@import url("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.3.0/css/all.min.css");
 
 			[data-memessages-tooltip]{
@@ -597,6 +659,7 @@ module.exports = class Memessages {
 				pointer-events: none;
 				transition: all 0.2s ease;
 				opacity: 0;
+				z-index: 999;
 			}
 
 			[data-memessages-tooltip]:hover:after{
@@ -732,16 +795,17 @@ module.exports = class Memessages {
 
 			.memessages--sidebar{
 				position: absolute;
-				padding: 10px 5px;
+				padding: 10px;
 				top: 0;
 				right: 0;
 				bottom: 0;
 				width: 360px;
-				background: linear-gradient(to right, transparent 0%, transparent 30%, rgba(0, 0, 0, 0.5) 100%);
+				background: linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 0.6) 100%);
 				transform: translateX(100%);
 				transition: all 0.3s ease;
 				overflow-x: hidden;
-				overflow-y: scroll;
+				overflow-y: auto;
+				box-sizing: border-box;
 				z-index: 99999;
 			}
 
@@ -750,23 +814,16 @@ module.exports = class Memessages {
 			}
 
 			.memessages--sidebar::-webkit-scrollbar-track{
-				background: transparent;
+				background: #000;
 			}
 
 			.memessages--sidebar::-webkit-scrollbar-thumb{
-				background: #7289da;
+				background: #5865f2;
 				border-radius: 100px;
 			}
 
 			.memessages--sidebar.open{
 				transform: none;
-			}
-
-			.memessages--sidebar--close{
-				margin: -10px;
-				padding: 10px;
-				font-size: 25px;
-				cursor: pointer;
 			}
 
 			.memessages--sidebar--card{
@@ -780,12 +837,59 @@ module.exports = class Memessages {
 				font-size: 18px;
 				line-height: 130%;
 				color: #333;
-				box-shadow: inset 0 -1px 0 1px rgba(0, 0, 0, 0.1);
+				box-sizing: border-box;
+				transition: all 0.3s ease;
+				box-shadow: inset 0 -1px 0 1px rgba(0, 0, 0, 0.1),
+							0 0 0 0 rgba(0, 0, 0, 0.3);
+			}
+
+			.memessages--sidebar--card.sticky{
+				position: sticky;
+				padding-left: 17px;
+				top: 0px;
+				border-left: 3px solid #5865f2;
+				z-index: 99999;
+			}
+
+			.memessages--sidebar--card.shadow{
+				box-shadow: inset 0 0 0 0 rgba(0, 0, 0, 0.1),
+							0 2px 5px 1px rgba(0, 0, 0, 0.3);
 			}
 
 			.memessages--sidebar--card > img,
 			.memessages--sidebar--card > audio{
 				width: 100%;
+			}
+
+			.memessages--sidebar--close{
+				position: fixed;
+				top: 50%;
+				right: 370px;
+				margin-top: -25px;
+				display: flex;
+				justify-content: center;
+				align-items: center;
+				width: 50px;
+				height: 50px;
+				background: #fff;
+				border-radius: 50%;
+				font-size: 25px;
+				color: #333;
+				transition: all 0.2s ease 0.3s,
+							background 0.2s ease,
+							color 0.2s ease;
+				transform: scale(0);
+				box-shadow: 0 2px 5px 1px rgba(0, 0, 0, 0.3);
+				cursor: pointer;
+			}
+
+			.memessages--sidebar--close:hover{
+				background: #5865f2;
+				color: #fff;
+			}
+
+			.memessages--sidebar.open .memessages--sidebar--close{
+				transform: scale(1);
 			}
 
 			.memessages--sidebar--history{
@@ -826,7 +930,7 @@ module.exports = class Memessages {
 			}
 
 			.memessages--toggle.on{
-				background: #7289da;
+				background: #5865f2;
 			}
 
 			.memessages--toggle.on:after{
@@ -850,7 +954,7 @@ module.exports = class Memessages {
 				left: 0;
 				width: calc(var(--value) * 100%);
 				height: 100%;
-				background: #7289da;
+				background: #5865f2;
 				border-radius: 100px;
 			}
 
@@ -886,7 +990,7 @@ module.exports = class Memessages {
 		this.audios = [];
 
 		this.dispatcher.unsubscribe('MESSAGE_CREATE', e => this.onMessage(e));
-		BdApi.clearCSS('Memessages');
+		BdApi.DOM.removeStyle(this.meta.name);
 		this.unrender();
 
 		this.unrender = () => {};
