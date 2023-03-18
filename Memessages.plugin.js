@@ -3,13 +3,12 @@
  * @author Greezor
  * @authorId 382062281623863298
  * @description Meme notifications
- * @version 0.4.0
+ * @version 0.4.1
  * @source https://github.com/Greezor/DiscordMemessages
  */
 
 // окно с браузером звуков и/или подсказки autocomplete
 // модификаторы в тексте типа [х2] (проиграть два раза или больше), также отступ и пагинация (может даже громкость/скорость/питч)
-// избранные звуки (может типа мини саундпад или просто коллекция любимых)
 // hotkeys
 
 module.exports = class Memessages {
@@ -566,9 +565,8 @@ module.exports = class Memessages {
 					'https://api.meowpad.me/v2/sounds/preview/24702.m4a',
 					'https://api.meowpad.me/v2/sounds/preview/3435.m4a',
 					'https://api.meowpad.me/v2/sounds/preview/2472.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/21946.m4a',
-					'https://www.myinstants.com/media/sounds/back-to-the-future-1.mp3',
 					'https://api.meowpad.me/v2/sounds/preview/1688.m4a',
+					'https://www.myinstants.com/media/sounds/back-to-the-future-1.mp3',
 				],
 				prop: 'history',
 				label: this.isLangRU ? 'Отображать историю звуков' : 'Show sound history',
@@ -710,8 +708,6 @@ module.exports = class Memessages {
 	async start()
 	{
 		this.pluginEnabled = true;
-
-		console.log(this.dispatcher)
 
 		this.dispatcher.subscribe('MESSAGE_CREATE', e => this.onMessage(e));
 		this.dispatcher.subscribe('MESSAGE_DELETE', e => this.onMessageDelete(e));
