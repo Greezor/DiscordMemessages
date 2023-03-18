@@ -3,16 +3,14 @@
  * @author Greezor
  * @authorId 382062281623863298
  * @description Meme notifications
- * @version 0.3.2
+ * @version 0.4.0
+ * @source https://github.com/Greezor/DiscordMemessages
  */
 
 // окно с браузером звуков и/или подсказки autocomplete
 // модификаторы в тексте типа [х2] (проиграть два раза или больше), также отступ и пагинация (может даже громкость/скорость/питч)
 // избранные звуки (может типа мини саундпад или просто коллекция любимых)
-// сочетания клавиш для отмены звуков, глушилки и избранного
-// всплывашки что за звук играет
-// резервный сервер myinstants
-// прерывать звук если сообщение удалили/отредачили (сочетание для быстрого удаления)
+// hotkeys
 
 module.exports = class Memessages {
 
@@ -22,12 +20,16 @@ module.exports = class Memessages {
 
 		this.launchedAt = 0;
 		this.lastMessageID = null;
-		this.audios = [];
+		this.plays = [];
 		this.sidebar = false;
 		this.historyLength = 0;
 		this.refs = {};
 
 		this.unrender = () => {};
+
+		this.getMemeIcon = this.createShuffleCycle(
+			this.memeIcons
+		);
 	}
 
 	get pluginEnabled()
@@ -62,7 +64,7 @@ module.exports = class Memessages {
 
 	get dispatcher()
 	{
-		return BdApi.Webpack.getModule(m => m.subscribe && m.unsubscribe);
+		return BdApi.Webpack.getModule(m => m.dispatch && m.subscribe);
 	}
 
 	get channelStore()
@@ -129,6 +131,33 @@ module.exports = class Memessages {
 		};
 	}
 
+	shuffle(arr)
+	{
+		let array = [ ...arr ];
+
+		for(let i = array.length - 1; i > 0; i--){
+			let j = Math.floor(Math.random() * (i + 1));
+			[ array[i], array[j] ] = [ array[j], array[i] ];
+		}
+
+		return array;
+	}
+
+	createShuffleCycle(array)
+	{
+		let shuffled = [];
+		let index = 0;
+
+		return () => {
+			if( shuffled[index] )
+				return shuffled[index++];
+
+			index = 1;
+			shuffled = this.shuffle(array);
+			return shuffled[0];
+		};
+	}
+
 	fetch(options)
 	{
 		return new Promise((resolve, reject) => {
@@ -144,9 +173,9 @@ module.exports = class Memessages {
 		});
 	}
 
-	get memeIcon()
+	get memeIcons()
 	{
-		const memes = [
+		return [
 			'https://img.icons8.com/fluency/1x/doge.png',
 			'https://img.icons8.com/fluency/1x/trollface.png',
 			'https://img.icons8.com/fluency/1x/lul.png',
@@ -159,10 +188,11 @@ module.exports = class Memessages {
 			'https://img.icons8.com/color/1x/ugandan-knuckles.png',
 			'https://img.icons8.com/color-glass/1x/salt-bae.png',
 		];
+	}
 
-		return memes[
-			Math.floor(Math.random() * memes.length)
-		];
+	get memeIcon()
+	{
+		return this.getMemeIcon();
 	}
 
 	async onMessage({ channelId, message, optimistic })
@@ -199,6 +229,32 @@ module.exports = class Memessages {
 					},
 				},
 			});
+	}
+
+	onMessageDelete({ id })
+	{
+		if( !this.pluginEnabled ) return;
+
+		this.aggregateAudio(audio => {
+			if( audio?.memessages?.message?.id === id )
+				audio.dispatchEvent(
+					new Event('ended')
+				);
+		});
+	}
+
+	onMessageEdit({ channelId, response })
+	{
+		if( !this.pluginEnabled || !response ) return;
+
+		const message = response.body;
+		this.lastMessageID = null;
+		this.onMessageDelete(message);
+		this.onMessage({
+			channelId,
+			message,
+			optimistic: false,
+		});
 	}
 
 	async getMemeSound(text)
@@ -252,14 +308,14 @@ module.exports = class Memessages {
 			card.append(labelWrapper);
 			this.refs.history.prepend(card);
 
-			if( this.historyLength >= 500 )
+			if( this.historyLength >= 100 )
 				this.$.find('.memessages--sidebar--card:last-child', this.refs.history)
 					.remove();
 			else
 				this.historyLength++;
 		}
 
-		this.audios.push(audio);
+		this.plays.push(audio);
 
 		audio.addEventListener('canplaythrough', () => {
 			audio.play();
@@ -276,12 +332,12 @@ module.exports = class Memessages {
 			historyCard.append(audio);
 		}
 
-		this.audios.splice(this.audios.indexOf(audio), 1);
+		this.plays.splice(this.plays.indexOf(audio), 1);
 	}
 
 	async aggregateAudio(func)
 	{
-		for(let audio of this.audios)
+		for(let audio of this.plays)
 			await func(audio);
 	}
 
@@ -489,6 +545,8 @@ module.exports = class Memessages {
 					'https://api.meowpad.me/v2/sounds/preview/54023.m4a',
 					'https://api.meowpad.me/v2/sounds/preview/55193.m4a',
 					'https://api.meowpad.me/v2/sounds/preview/41776.m4a',
+					'https://www.myinstants.com/media/sounds/devil-may-cry-menu-sound.mp3',
+					'https://www.myinstants.com/media/sounds/eh-put0-marty-mcfly.mp3',
 				],
 				prop: 'volume',
 				label: this.isLangRU ? 'Громкость' : 'Volume',
@@ -496,9 +554,21 @@ module.exports = class Memessages {
 			{
 				type: 'toggle',
 				sounds: [
-					'https://api.meowpad.me/v2/sounds/preview/31297.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/4898.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/8761.m4a',
+					...(
+						this.isLangRU
+							? [
+								'https://api.meowpad.me/v2/sounds/preview/31297.m4a',
+								'https://api.meowpad.me/v2/sounds/preview/4898.m4a',
+								'https://api.meowpad.me/v2/sounds/preview/8761.m4a',
+							]
+							: []
+					),
+					'https://api.meowpad.me/v2/sounds/preview/24702.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/3435.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/2472.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/21946.m4a',
+					'https://www.myinstants.com/media/sounds/back-to-the-future-1.mp3',
+					'https://api.meowpad.me/v2/sounds/preview/1688.m4a',
 				],
 				prop: 'history',
 				label: this.isLangRU ? 'Отображать историю звуков' : 'Show sound history',
@@ -511,6 +581,14 @@ module.exports = class Memessages {
 				sounds: [
 					'https://api.meowpad.me/v2/sounds/preview/78899.m4a',
 					'https://api.meowpad.me/v2/sounds/preview/78898.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/963.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/7486.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/25300.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/74341.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/641.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/62105.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/974.m4a',
+					'https://www.myinstants.com/media/sounds/00002a5b.mp3',
 				],
 				prop: 'chaosMode',
 				label: this.isLangRU ? 'Режим Хаоса!' : 'Chaos Mode!',
@@ -524,9 +602,9 @@ module.exports = class Memessages {
 			group.append(label);
 			sidebarSettings.append(group);
 
-			const getRandomSound = () => (setting?.sounds ?? [])?.[
-				Math.floor(Math.random() * (setting?.sounds?.length ?? 0))
-			];
+			const getRandomSound = this.createShuffleCycle(
+				setting?.sounds ?? []
+			);
 
 			switch(setting.type){
 				case 'toggle':
@@ -544,9 +622,12 @@ module.exports = class Memessages {
 							[setting.prop]: !this.settings[setting.prop],
 						};
 
-						const sound = getRandomSound();
-						if( sound && this.settings[setting.prop] )
-							await this.play(sound);
+						if( this.settings[setting.prop] ){
+							const sound = getRandomSound();
+							
+							if( sound )
+								await this.play(sound);
+						}
 
 						setting?.action?.(this.settings[setting.prop]);
 					});
@@ -595,13 +676,16 @@ module.exports = class Memessages {
 						
 						enabled = false;
 
-						const sound = getRandomSound();
-						if( sound && this.settings[setting.prop] != value )
-							await this.play(sound, {
-								props: {
-									volume: this.settings[setting.prop],
-								},
-							});
+						if( this.settings[setting.prop] != value ){
+							const sound = getRandomSound();
+							
+							if( sound )
+								await this.play(sound, {
+									props: {
+										volume: this.settings[setting.prop],
+									},
+								});
+						}
 
 						value = this.settings[setting.prop];
 
@@ -627,7 +711,11 @@ module.exports = class Memessages {
 	{
 		this.pluginEnabled = true;
 
+		console.log(this.dispatcher)
+
 		this.dispatcher.subscribe('MESSAGE_CREATE', e => this.onMessage(e));
+		this.dispatcher.subscribe('MESSAGE_DELETE', e => this.onMessageDelete(e));
+		this.dispatcher.subscribe('MESSAGE_END_EDIT', e => this.onMessageEdit(e));
 
 		BdApi.DOM.addStyle(this.meta.name, `
 			@import url("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.3.0/css/all.min.css");
@@ -649,12 +737,12 @@ module.exports = class Memessages {
 				left: 0;
 				width: var(--width);
 				transform: translateX(var(--offset));
-				background: #fff;
+				background: var(--background-floating);
 				border-radius: 10px;
 				font-size: 14px;
 				line-height: 130%;
 				white-space: var(--ws);
-				color: #333;
+				color: var(--text-normal);
 				box-shadow: 0 2px 5px 1px rgba(0, 0, 0, 0.3);
 				pointer-events: none;
 				transition: all 0.2s ease;
@@ -800,12 +888,13 @@ module.exports = class Memessages {
 				right: 0;
 				bottom: 0;
 				width: 360px;
-				background: linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 0.6) 100%);
+				background: linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 0.5) 100%);
 				transform: translateX(100%);
 				transition: all 0.3s ease;
 				overflow-x: hidden;
 				overflow-y: auto;
 				box-sizing: border-box;
+				visibility: hidden;
 				z-index: 99999;
 			}
 
@@ -818,12 +907,13 @@ module.exports = class Memessages {
 			}
 
 			.memessages--sidebar::-webkit-scrollbar-thumb{
-				background: #5865f2;
+				background: var(--brand-500);
 				border-radius: 100px;
 			}
 
 			.memessages--sidebar.open{
 				transform: none;
+				visibility: visible;
 			}
 
 			.memessages--sidebar--card{
@@ -832,11 +922,11 @@ module.exports = class Memessages {
 				margin-bottom: 20px;
 				padding: 20px;
 				gap: 20px;
-				background: #fff;
+				background: var(--background-primary);
 				border-radius: 10px;
 				font-size: 18px;
 				line-height: 130%;
-				color: #333;
+				color: var(--text-normal);
 				box-sizing: border-box;
 				transition: all 0.3s ease;
 				box-shadow: inset 0 -1px 0 1px rgba(0, 0, 0, 0.1),
@@ -847,7 +937,7 @@ module.exports = class Memessages {
 				position: sticky;
 				padding-left: 17px;
 				top: 0px;
-				border-left: 3px solid #5865f2;
+				border-left: 3px solid var(--brand-500);
 				z-index: 99999;
 			}
 
@@ -871,10 +961,10 @@ module.exports = class Memessages {
 				align-items: center;
 				width: 50px;
 				height: 50px;
-				background: #fff;
+				background: var(--background-primary);
 				border-radius: 50%;
 				font-size: 25px;
-				color: #333;
+				color: var(--text-normal);
 				transition: all 0.2s ease 0.3s,
 							background 0.2s ease,
 							color 0.2s ease;
@@ -884,8 +974,8 @@ module.exports = class Memessages {
 			}
 
 			.memessages--sidebar--close:hover{
-				background: #5865f2;
-				color: #fff;
+				background: var(--brand-500);
+				color: var(--white-500);
 			}
 
 			.memessages--sidebar.open .memessages--sidebar--close{
@@ -911,7 +1001,7 @@ module.exports = class Memessages {
 				display: inline-block;
 				width: 40px;
 				height: 25px;
-				background: #555;
+				background: var(--background-tertiary);
 				border-radius: 100px;
 				transition: all 0.3s ease;
 				cursor: pointer;
@@ -924,13 +1014,13 @@ module.exports = class Memessages {
 				left: 2px;
 				width: 21px;
 				height: 21px;
-				background: #fff;
+				background: var(--white-500);
 				border-radius: 50%;
 				transition: inherit;
 			}
 
 			.memessages--toggle.on{
-				background: #5865f2;
+				background: var(--brand-500);
 			}
 
 			.memessages--toggle.on:after{
@@ -942,7 +1032,7 @@ module.exports = class Memessages {
 				margin: 0 8px;
 				width: 100%;
 				height: 10px;
-				background: #555;
+				background: var(--background-tertiary);
 				border-radius: 100px;
 				--value: 0;
 			}
@@ -954,7 +1044,7 @@ module.exports = class Memessages {
 				left: 0;
 				width: calc(var(--value) * 100%);
 				height: 100%;
-				background: #5865f2;
+				background: var(--brand-500);
 				border-radius: 100px;
 			}
 
@@ -967,7 +1057,7 @@ module.exports = class Memessages {
 				height: 16px;
 				margin-top: -8px;
 				margin-left: -8px;
-				background: #fff;
+				background: var(--white-500);
 				border-radius: 50%;
 				box-shadow: 0 2px 5px 1px rgba(0, 0, 0, 0.3);
 				cursor: grab;
@@ -987,9 +1077,11 @@ module.exports = class Memessages {
 		this.pluginEnabled = false;
 
 		this.aggregateAudio(audio => audio.pause());
-		this.audios = [];
+		this.plays = [];
 
 		this.dispatcher.unsubscribe('MESSAGE_CREATE', e => this.onMessage(e));
+		this.dispatcher.unsubscribe('MESSAGE_DELETE', e => this.onMessageDelete(e));
+		this.dispatcher.unsubscribe('MESSAGE_END_EDIT', e => this.onMessageEdit(e));
 		BdApi.DOM.removeStyle(this.meta.name);
 		this.unrender();
 
