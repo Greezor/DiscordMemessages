@@ -3,16 +3,10 @@
  * @author Greezor
  * @authorId 382062281623863298
  * @description Meme notifications
- * @version 0.3.2
+ * @version 0.5.0
+ * @donate https://boosty.to/greezor
+ * @source https://github.com/Greezor/DiscordMemessages
  */
-
-// окно с браузером звуков и/или подсказки autocomplete
-// модификаторы в тексте типа [х2] (проиграть два раза или больше), также отступ и пагинация (может даже громкость/скорость/питч)
-// избранные звуки (может типа мини саундпад или просто коллекция любимых)
-// сочетания клавиш для отмены звуков, глушилки и избранного
-// всплывашки что за звук играет
-// резервный сервер myinstants
-// прерывать звук если сообщение удалили/отредачили (сочетание для быстрого удаления)
 
 module.exports = class Memessages {
 
@@ -22,12 +16,18 @@ module.exports = class Memessages {
 
 		this.launchedAt = 0;
 		this.lastMessageID = null;
-		this.audios = [];
+		this.plays = [];
 		this.sidebar = false;
 		this.historyLength = 0;
 		this.refs = {};
 
+		this._settings = null;
+
 		this.unrender = () => {};
+
+		this.getMemeIcon = this.createShuffleCycle(
+			this.memeIcons
+		);
 	}
 
 	get pluginEnabled()
@@ -42,6 +42,9 @@ module.exports = class Memessages {
 
 	get settings()
 	{
+		if( this._settings )
+			return this._settings;
+
 		const defaultSettings = {
 			memeChannels: [],
 			muted: false,
@@ -50,19 +53,25 @@ module.exports = class Memessages {
 			chaosMode: false,
 		};
 
-		return Object.assign({}, defaultSettings, (
+		return this._settings = Object.assign({}, defaultSettings, (
 			BdApi.Data.load(this.meta.name, 'settings') ?? {}
 		));
 	}
 
 	set settings(value)
 	{
+		this._settings = value;
 		BdApi.Data.save(this.meta.name, 'settings', value);
+	}
+
+	get React()
+	{
+		return BdApi.Webpack.getModule(m => m.createElement && m.cloneElement);
 	}
 
 	get dispatcher()
 	{
-		return BdApi.Webpack.getModule(m => m.subscribe && m.unsubscribe);
+		return BdApi.Webpack.getModule(m => m.dispatch && m.subscribe);
 	}
 
 	get channelStore()
@@ -129,6 +138,33 @@ module.exports = class Memessages {
 		};
 	}
 
+	shuffle(arr)
+	{
+		let array = [ ...arr ];
+
+		for(let i = array.length - 1; i > 0; i--){
+			let j = Math.floor(Math.random() * (i + 1));
+			[ array[i], array[j] ] = [ array[j], array[i] ];
+		}
+
+		return array;
+	}
+
+	createShuffleCycle(array)
+	{
+		let shuffled = [];
+		let index = 0;
+
+		return () => {
+			if( shuffled[index] )
+				return shuffled[index++];
+
+			index = 1;
+			shuffled = this.shuffle(array);
+			return shuffled[0];
+		};
+	}
+
 	fetch(options)
 	{
 		return new Promise((resolve, reject) => {
@@ -144,9 +180,9 @@ module.exports = class Memessages {
 		});
 	}
 
-	get memeIcon()
+	get memeIcons()
 	{
-		const memes = [
+		return [
 			'https://img.icons8.com/fluency/1x/doge.png',
 			'https://img.icons8.com/fluency/1x/trollface.png',
 			'https://img.icons8.com/fluency/1x/lul.png',
@@ -159,13 +195,14 @@ module.exports = class Memessages {
 			'https://img.icons8.com/color/1x/ugandan-knuckles.png',
 			'https://img.icons8.com/color-glass/1x/salt-bae.png',
 		];
-
-		return memes[
-			Math.floor(Math.random() * memes.length)
-		];
 	}
 
-	async onMessage({ channelId, message, optimistic })
+	get memeIcon()
+	{
+		return this.getMemeIcon();
+	}
+
+	async onMessage({ message, optimistic })
 	{
 		if(
 			!this.pluginEnabled
@@ -179,7 +216,7 @@ module.exports = class Memessages {
 			(
 				!this.settings.chaosMode
 				&&
-				!this.settings.memeChannels.includes(channelId)
+				!this.settings.memeChannels.includes(message.channel_id)
 			)
 		)	return;
 
@@ -193,12 +230,33 @@ module.exports = class Memessages {
 				props: {
 					muted: this.settings.muted,
 					volume: this.settings.volume,
-					memessages: {
-						message,
-						channelId,
-					},
+					memessage: message,
 				},
 			});
+	}
+
+	onMessageDelete({ id })
+	{
+		if( !this.pluginEnabled ) return;
+
+		this.aggregateAudio(audio => {
+			if( audio?.memessage?.id === id ){
+				audio.dispatchEvent(
+					new Event('ended')
+				);
+			}
+		});
+	}
+
+	onMessageEdit({ message })
+	{
+		if( !this.pluginEnabled || !message ) return;
+
+		this.onMessageDelete(message);
+
+		this.lastMessageID = null;
+
+		this.onMessage({ message });
 	}
 
 	async getMemeSound(text)
@@ -239,7 +297,7 @@ module.exports = class Memessages {
 				'cursor': 'pointer',
 			});
 
-			label.innerText = audio?.memessages?.message?.content ?? '';
+			label.innerText = audio?.memessage?.content ?? '';
 			label.addEventListener('click', () => {
 				DiscordNative.clipboard.copy(label.innerText);
 				BdApi.UI.showToast(this.isLangRU ? 'Скопировано' : 'Copied', {
@@ -252,14 +310,14 @@ module.exports = class Memessages {
 			card.append(labelWrapper);
 			this.refs.history.prepend(card);
 
-			if( this.historyLength >= 500 )
+			if( this.historyLength >= 100 )
 				this.$.find('.memessages--sidebar--card:last-child', this.refs.history)
 					.remove();
 			else
 				this.historyLength++;
 		}
 
-		this.audios.push(audio);
+		this.plays.push(audio);
 
 		audio.addEventListener('canplaythrough', () => {
 			audio.play();
@@ -273,15 +331,17 @@ module.exports = class Memessages {
 			audio.muted = false;
 			audio.volume = 1;
 			audio.currentTime = 0;
+			audio.pause();
+
 			historyCard.append(audio);
 		}
 
-		this.audios.splice(this.audios.indexOf(audio), 1);
+		this.plays.splice(this.plays.indexOf(audio), 1);
 	}
 
 	async aggregateAudio(func)
 	{
-		for(let audio of this.audios)
+		for(let audio of this.plays)
 			await func(audio);
 	}
 
@@ -444,25 +504,24 @@ module.exports = class Memessages {
 
 
 
-		const sidebar = this.$.el('div', {
-			class: 'memessages--sidebar',
-		});
-
+		const sidebar = this.$.el('div', { class: 'memessages--sidebar' });
+		const sidebarScrollbox = this.$.el('div', { class: 'memessages--sidebar--scrollbox' });
 		const sidebarSettings = this.$.el('div', { class: 'memessages--sidebar--card sticky' });
 		const sidebarCloseBtn = this.$.el('i', { class: 'memessages--sidebar--close fa-solid fa-angle-right' });
 		const history = this.$.el('div', { class: 'memessages--sidebar--history' });
 		this.refs.history = history;
-		sidebarSettings.append(sidebarCloseBtn);
-		sidebar.append(sidebarSettings);
-		sidebar.append(history);
+		sidebarScrollbox.append(sidebarSettings);
+		sidebarScrollbox.append(history);
+		sidebar.append(sidebarScrollbox);
+		sidebar.append(sidebarCloseBtn);
 
 		sidebarCloseBtn.addEventListener('click', () => {
 			this.sidebar = false;
 			sidebar.classList.remove('open');
 		});
 
-		sidebar.addEventListener('scroll', () => {
-			if( sidebar.scrollTop > 20 )
+		sidebarScrollbox.addEventListener('scroll', () => {
+			if( sidebarScrollbox.scrollTop > 20 )
 				sidebarSettings.classList.add('shadow');
 			else
 				sidebarSettings.classList.remove('shadow');
@@ -489,6 +548,8 @@ module.exports = class Memessages {
 					'https://api.meowpad.me/v2/sounds/preview/54023.m4a',
 					'https://api.meowpad.me/v2/sounds/preview/55193.m4a',
 					'https://api.meowpad.me/v2/sounds/preview/41776.m4a',
+					'https://www.myinstants.com/media/sounds/devil-may-cry-menu-sound.mp3',
+					'https://www.myinstants.com/media/sounds/eh-put0-marty-mcfly.mp3',
 				],
 				prop: 'volume',
 				label: this.isLangRU ? 'Громкость' : 'Volume',
@@ -496,14 +557,26 @@ module.exports = class Memessages {
 			{
 				type: 'toggle',
 				sounds: [
-					'https://api.meowpad.me/v2/sounds/preview/31297.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/4898.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/8761.m4a',
+					...(
+						this.isLangRU
+							? [
+								'https://api.meowpad.me/v2/sounds/preview/31297.m4a',
+								'https://api.meowpad.me/v2/sounds/preview/4898.m4a',
+								'https://api.meowpad.me/v2/sounds/preview/8761.m4a',
+							]
+							: []
+					),
+					'https://api.meowpad.me/v2/sounds/preview/24702.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/3435.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/2472.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/1688.m4a',
+					'https://www.myinstants.com/media/sounds/back-to-the-future-1.mp3',
 				],
 				prop: 'history',
 				label: this.isLangRU ? 'Отображать историю звуков' : 'Show sound history',
 				action: () => {
 					history.innerHTML = '';
+					this.historyLength = 0;
 				},
 			},
 			{
@@ -511,9 +584,72 @@ module.exports = class Memessages {
 				sounds: [
 					'https://api.meowpad.me/v2/sounds/preview/78899.m4a',
 					'https://api.meowpad.me/v2/sounds/preview/78898.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/963.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/7486.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/25300.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/74341.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/641.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/62105.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/974.m4a',
+					'https://www.myinstants.com/media/sounds/00002a5b.mp3',
 				],
 				prop: 'chaosMode',
 				label: this.isLangRU ? 'Режим Хаоса!' : 'Chaos Mode!',
+			},
+			{
+				type: 'button',
+				sounds: [
+					'https://api.meowpad.me/v2/sounds/preview/38297.m4a',
+				],
+				label: this.isLangRU ? 'О плагине' : 'About',
+				action: () => {
+					const h = this.React.createElement;
+					BdApi.UI.alert(`${ this.meta.name } ${ this.meta.version }`, (
+						this.isLangRU
+							? h('div', { class: 'memessages--about' },
+								h('p', null, 'Спасибо за установку плагина =)'),
+								h('p', null,
+									h('span', null, 'Если вам понравился плагин, вы можете поддержать меня тут: '),
+									h('a', { href: 'https://boosty.to/greezor', target: '_blank' }, 'Boosty'),
+								),
+								h('br'),
+								h('p', null,
+									h('sub', null,
+										h('span', null, 'Звуки: '),
+										h('a', { href: 'https://meowpad.me/', target: '_blank' }, 'Meowpad'),
+									),
+									h('br'),
+									h('sub', null,
+										h('span', null, 'Иконки: '),
+										h('a', { href: 'https://fontawesome.com/', target: '_blank' }, 'Font Awesome'),
+										h('span', null, ', '),
+										h('a', { href: 'https://icons8.com/', target: '_blank' }, 'Icon8'),
+									),
+								),
+							)
+							: h('div', { class: 'memessages--about' },
+								h('p', null, 'Thank you for installing the plugin =)'),
+								h('p', null,
+									h('span', null, 'If you like the plugin, you can support me here: '),
+									h('a', { href: 'https://boosty.to/greezor', target: '_blank' }, 'Boosty'),
+								),
+								h('br'),
+								h('p', null,
+									h('sub', null,
+										h('span', null, 'Sounds: '),
+										h('a', { href: 'https://meowpad.me/', target: '_blank' }, 'Meowpad'),
+									),
+									h('br'),
+									h('sub', null,
+										h('span', null, 'Icons: '),
+										h('a', { href: 'https://fontawesome.com/', target: '_blank' }, 'Font Awesome'),
+										h('span', null, ', '),
+										h('a', { href: 'https://icons8.com/', target: '_blank' }, 'Icon8'),
+									),
+								),
+							)
+					));
+				},
 			},
 		];
 
@@ -524,9 +660,9 @@ module.exports = class Memessages {
 			group.append(label);
 			sidebarSettings.append(group);
 
-			const getRandomSound = () => (setting?.sounds ?? [])?.[
-				Math.floor(Math.random() * (setting?.sounds?.length ?? 0))
-			];
+			const getRandomSound = this.createShuffleCycle(
+				setting?.sounds ?? []
+			);
 
 			switch(setting.type){
 				case 'toggle':
@@ -536,7 +672,7 @@ module.exports = class Memessages {
 					if( this.settings[setting.prop] )
 						toggle.classList.add('on');
 
-					toggle.addEventListener('click', async () => {
+					toggle.addEventListener('click', () => {
 						toggle.classList.toggle('on');
 
 						this.settings = {
@@ -544,11 +680,17 @@ module.exports = class Memessages {
 							[setting.prop]: !this.settings[setting.prop],
 						};
 
-						const sound = getRandomSound();
-						if( sound && this.settings[setting.prop] )
-							await this.play(sound);
-
 						setting?.action?.(this.settings[setting.prop]);
+
+						if( this.settings[setting.prop] ){
+							const sound = getRandomSound();
+							
+							if( sound )
+								this.play(sound, {
+									muted: this.settings.muted,
+									volume: this.settings.volume,
+								});
+						}
 					});
 					break;
 
@@ -590,22 +732,43 @@ module.exports = class Memessages {
 
 					document.addEventListener('mousemove', onChange);
 
-					document.addEventListener('mouseup', async e => {
+					document.addEventListener('mouseup', e => {
 						if( !enabled ) return;
 						
 						enabled = false;
 
-						const sound = getRandomSound();
-						if( sound && this.settings[setting.prop] != value )
-							await this.play(sound, {
-								props: {
-									volume: this.settings[setting.prop],
-								},
-							});
+						setting?.action?.(this.settings[setting.prop]);
+
+						if( this.settings[setting.prop] != value ){
+							const sound = getRandomSound();
+							
+							if( sound )
+								this.play(sound, {
+									props: {
+										muted: this.settings.muted,
+										volume: this.settings.volume,
+									},
+								});
+						}
 
 						value = this.settings[setting.prop];
+					});
+					break;
+				
+				case 'button':
+					group.classList.add('clickable');
+					group.addEventListener('click', () => {
+						setting?.action?.();
 
-						setting?.action?.(this.settings[setting.prop]);
+						const sound = getRandomSound();
+
+						if( sound )
+							this.play(sound, {
+								props: {
+									muted: this.settings.muted,
+									volume: this.settings.volume,
+								},
+							});
 					});
 					break;
 			}
@@ -622,15 +785,74 @@ module.exports = class Memessages {
 			func();
 		};
 	}
+	
+	async autoUpdate()
+	{
+		const code = await this.fetch('https://raw.githubusercontent.com/Greezor/DiscordMemessages/master/Memessages.plugin.js');
+
+		const [ , newMajor, newMinor, newPatch ] = code.match(/@version (\d)\.(\d)\.(\d)/);
+		const [ major, minor, patch ] = this.meta.version.split('.');
+
+		if(
+			Number(newMajor) > Number(major)
+			||
+			(
+				Number(newMajor) == Number(major)
+				&&
+				Number(newMinor) > Number(minor)
+			)
+			||
+			(
+				Number(newMajor) == Number(major)
+				&&
+				Number(newMinor) == Number(minor)
+				&&
+				Number(newPatch) > Number(patch)
+			)
+		){
+			require('fs').writeFile(
+				require('path').join(__dirname, this.meta.filename),
+				code,
+				() => BdApi.UI.showNotice(this.isLangRU ? `Плагин "Memessages" обновлён до версии ${ newMajor }.${ newMinor }.${ newPatch }` : `Plugin "Memessages" updated to version ${ newMajor }.${ newMinor }.${ newPatch }`, {
+					type: 'success',
+					timeout: 0,
+				})
+			)
+		}
+	}
 
 	async start()
 	{
 		this.pluginEnabled = true;
 
 		this.dispatcher.subscribe('MESSAGE_CREATE', e => this.onMessage(e));
+		this.dispatcher.subscribe('MESSAGE_DELETE', e => this.onMessageDelete(e));
+		this.dispatcher.subscribe('MESSAGE_UPDATE', e => this.onMessageEdit(e));
 
 		BdApi.DOM.addStyle(this.meta.name, `
 			@import url("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.3.0/css/all.min.css");
+
+			:root{
+				--mm-color--white: #fafafa;
+				--mm-color--dark-gray: #1e1f22;
+				--mm-color--light-gray: #e3e5e8;
+				--mm-color--gray: #313338;
+				--mm-color--discord: #5865ed;
+			}
+
+			html.theme-dark{
+				--mm--bg: var(--mm-color--gray);
+				--mm--bg-second: var(--mm-color--dark-gray);
+				--mm--accent: var(--mm-color--discord);
+				--mm--text: var(--mm-color--white);
+			}
+
+			html.theme-light{
+				--mm--bg: var(--mm-color--white);
+				--mm--bg-second: var(--mm-color--light-gray);
+				--mm--accent: var(--mm-color--discord);
+				--mm--text: var(--mm-color--gray);
+			}
 
 			[data-memessages-tooltip]{
 				position: relative;
@@ -649,17 +871,17 @@ module.exports = class Memessages {
 				left: 0;
 				width: var(--width);
 				transform: translateX(var(--offset));
-				background: #fff;
-				border-radius: 10px;
+				background: var(--mm--bg);
+				border-radius: 5px;
 				font-size: 14px;
 				line-height: 130%;
 				white-space: var(--ws);
-				color: #333;
+				color: var(--mm--text);
 				box-shadow: 0 2px 5px 1px rgba(0, 0, 0, 0.3);
 				pointer-events: none;
 				transition: all 0.2s ease;
 				opacity: 0;
-				z-index: 999;
+				z-index: 9999;
 			}
 
 			[data-memessages-tooltip]:hover:after{
@@ -669,7 +891,7 @@ module.exports = class Memessages {
 
 			.memessages--mute-toggle{
 				position: relative;
-				z-index: 2;
+				z-index: 9999;
 			}
 			
 			.memessages--mute-toggle i{
@@ -705,6 +927,7 @@ module.exports = class Memessages {
 				margin-left: -9px;
 				transition: all 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
 				transform: scale(0) translateY(-2px) rotate(-10deg);
+				pointer-events: none;
 				z-index: -1;
 			}
 
@@ -755,6 +978,10 @@ module.exports = class Memessages {
 				z-index: 2;
 			}
 
+			.memessages--channel-btn img{
+				pointer-events: none;
+			}
+
 			.memessages--channel-btn.hide{
 				display: none;
 			}
@@ -795,35 +1022,51 @@ module.exports = class Memessages {
 
 			.memessages--sidebar{
 				position: absolute;
-				padding: 10px;
 				top: 0;
 				right: 0;
 				bottom: 0;
-				width: 360px;
-				background: linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 0.6) 100%);
+				width: 500px;
+				background: linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 0.5) 100%);
+				background-repeat: no-repeat;
+				background-position: 500px 0;
 				transform: translateX(100%);
-				transition: all 0.3s ease;
+				transition: all 0.3s ease,
+							background-position 0.3s ease 0.15s;
+				visibility: hidden;
+				pointer-events: none;
+				z-index: 999;
+			}
+
+			.memessages--sidebar--scrollbox{
+				position: absolute;
+				padding: 10px;
+				top: 0;
+				right: 0;
+				width: 360px;
+				max-height: 100%;
 				overflow-x: hidden;
 				overflow-y: auto;
 				box-sizing: border-box;
-				z-index: 99999;
+				pointer-events: auto;
 			}
 
-			.memessages--sidebar::-webkit-scrollbar{
+			.memessages--sidebar--scrollbox::-webkit-scrollbar{
 				width: 5px;
 			}
 
-			.memessages--sidebar::-webkit-scrollbar-track{
+			.memessages--sidebar--scrollbox::-webkit-scrollbar-track{
 				background: #000;
 			}
 
-			.memessages--sidebar::-webkit-scrollbar-thumb{
-				background: #5865f2;
+			.memessages--sidebar--scrollbox::-webkit-scrollbar-thumb{
+				background: var(--mm--accent);
 				border-radius: 100px;
 			}
 
 			.memessages--sidebar.open{
 				transform: none;
+				visibility: visible;
+				background-position: 0 0;
 			}
 
 			.memessages--sidebar--card{
@@ -832,27 +1075,36 @@ module.exports = class Memessages {
 				margin-bottom: 20px;
 				padding: 20px;
 				gap: 20px;
-				background: #fff;
-				border-radius: 10px;
+				background: var(--mm--bg);
+				border-radius: 5px;
 				font-size: 18px;
 				line-height: 130%;
-				color: #333;
+				color: var(--mm--text);
 				box-sizing: border-box;
 				transition: all 0.3s ease;
 				box-shadow: inset 0 -1px 0 1px rgba(0, 0, 0, 0.1),
+							inset 0 0 0 -100px var(--mm--accent),
 							0 0 0 0 rgba(0, 0, 0, 0.3);
 			}
 
 			.memessages--sidebar--card.sticky{
 				position: sticky;
-				padding-left: 17px;
 				top: 0px;
-				border-left: 3px solid #5865f2;
-				z-index: 99999;
+				z-index: 999;
+				box-shadow: inset 0 -1px 0 1px rgba(0, 0, 0, 0.1),
+							inset 103px 0 0 -100px var(--mm--accent),
+							0 0 0 0 rgba(0, 0, 0, 0.3);
 			}
 
 			.memessages--sidebar--card.shadow{
-				box-shadow: inset 0 0 0 0 rgba(0, 0, 0, 0.1),
+				box-shadow: inset 0 -1px 0 1px rgba(0, 0, 0, 0.1),
+							inset 0 0 0 -100px var(--mm--accent),
+							0 2px 5px 1px rgba(0, 0, 0, 0.3);
+			}
+
+			.memessages--sidebar--card.sticky.shadow{
+				box-shadow: inset 0 -1px 0 1px rgba(0, 0, 0, 0.1),
+							inset 103px 0 0 -100px var(--mm--accent),
 							0 2px 5px 1px rgba(0, 0, 0, 0.3);
 			}
 
@@ -862,34 +1114,41 @@ module.exports = class Memessages {
 			}
 
 			.memessages--sidebar--close{
-				position: fixed;
-				top: 50%;
+				position: absolute;
+				top: 15px;
 				right: 370px;
-				margin-top: -25px;
 				display: flex;
 				justify-content: center;
 				align-items: center;
 				width: 50px;
 				height: 50px;
-				background: #fff;
+				background: var(--mm-color--white);
 				border-radius: 50%;
 				font-size: 25px;
-				color: #333;
-				transition: all 0.2s ease 0.3s,
-							background 0.2s ease,
-							color 0.2s ease;
-				transform: scale(0);
+				color: var(--mm-color--gray);
+				transition: all 0.2s ease;
 				box-shadow: 0 2px 5px 1px rgba(0, 0, 0, 0.3);
+				pointer-events: auto;
 				cursor: pointer;
 			}
 
 			.memessages--sidebar--close:hover{
-				background: #5865f2;
-				color: #fff;
+				background: var(--mm--accent);
+				color: var(--mm-color--white);
 			}
 
 			.memessages--sidebar.open .memessages--sidebar--close{
-				transform: scale(1);
+				animation: memessages--show-close-btn 0.3s ease 0.3s both;
+			}
+
+			@keyframes memessages--show-close-btn{
+				0%{
+					transform: translateX(100px);
+				}
+
+				100%{
+					transform: none;
+				}
 			}
 
 			.memessages--sidebar--history{
@@ -906,12 +1165,24 @@ module.exports = class Memessages {
 				gap: 20px;
 			}
 
+			.memessages--sidebar--setting.clickable{
+				margin: -10px;
+				padding: 10px;
+				border-radius: 5px;
+				cursor: pointer;
+			}
+
+			.memessages--sidebar--setting.clickable:hover{
+				background: var(--mm--accent);
+				color: var(--mm-color--white);
+			}
+
 			.memessages--toggle{
 				position: relative;
 				display: inline-block;
 				width: 40px;
 				height: 25px;
-				background: #555;
+				background: var(--mm--bg-second);
 				border-radius: 100px;
 				transition: all 0.3s ease;
 				cursor: pointer;
@@ -924,13 +1195,13 @@ module.exports = class Memessages {
 				left: 2px;
 				width: 21px;
 				height: 21px;
-				background: #fff;
+				background: var(--mm-color--white);
 				border-radius: 50%;
 				transition: inherit;
 			}
 
 			.memessages--toggle.on{
-				background: #5865f2;
+				background: var(--mm--accent);
 			}
 
 			.memessages--toggle.on:after{
@@ -942,7 +1213,7 @@ module.exports = class Memessages {
 				margin: 0 8px;
 				width: 100%;
 				height: 10px;
-				background: #555;
+				background: var(--mm--bg-second);
 				border-radius: 100px;
 				--value: 0;
 			}
@@ -954,7 +1225,7 @@ module.exports = class Memessages {
 				left: 0;
 				width: calc(var(--value) * 100%);
 				height: 100%;
-				background: #5865f2;
+				background: var(--mm--accent);
 				border-radius: 100px;
 			}
 
@@ -967,7 +1238,7 @@ module.exports = class Memessages {
 				height: 16px;
 				margin-top: -8px;
 				margin-left: -8px;
-				background: #fff;
+				background: var(--mm-color--white);
 				border-radius: 50%;
 				box-shadow: 0 2px 5px 1px rgba(0, 0, 0, 0.3);
 				cursor: grab;
@@ -977,22 +1248,38 @@ module.exports = class Memessages {
 			.memessages--slider:active:after{
 				cursor: grabbing;
 			}
+
+			.memessages--about{
+				color: var(--text-normal);
+			}
+
+			.memessages--about a{
+				color: var(--brand-500);
+			}
 		`);
 
 		this.render();
+
+		this.updateTimeout = setTimeout(() => this.autoUpdate(), 3000);
 	}
 
 	stop()
 	{
 		this.pluginEnabled = false;
 
+		clearTimeout(this.updateTimeout);
+
 		this.aggregateAudio(audio => audio.pause());
-		this.audios = [];
+		this.plays = [];
 
 		this.dispatcher.unsubscribe('MESSAGE_CREATE', e => this.onMessage(e));
+		this.dispatcher.unsubscribe('MESSAGE_DELETE', e => this.onMessageDelete(e));
+		this.dispatcher.unsubscribe('MESSAGE_UPDATE', e => this.onMessageEdit(e));
 		BdApi.DOM.removeStyle(this.meta.name);
 		this.unrender();
 
+		this.sidebar = false;
+		this.historyLength = 0;
 		this.unrender = () => {};
 	}
 
