@@ -183,17 +183,18 @@ module.exports = class Memessages {
 	get memeIcons()
 	{
 		return [
-			'https://img.icons8.com/fluency/1x/doge.png',
-			'https://img.icons8.com/fluency/1x/trollface.png',
-			'https://img.icons8.com/fluency/1x/lul.png',
-			'https://img.icons8.com/fluency/1x/monkas.png',
-			'https://img.icons8.com/fluency/1x/pogchamp.png',
-			'https://img.icons8.com/fluency/1x/angry-face-meme.png',
-			'https://img.icons8.com/fluency/1x/gachi.png',
-			'https://img.icons8.com/color/1x/not-bad-meme.png',
-			'https://img.icons8.com/color/1x/feels-guy.png',
-			'https://img.icons8.com/color/1x/ugandan-knuckles.png',
-			'https://img.icons8.com/color-glass/1x/salt-bae.png',
+			'https://img.icons8.com/fluency/96/null/doge.png',
+			'https://img.icons8.com/color/96/null/not-bad-meme.png',
+			'https://img.icons8.com/officel/80/null/scared-face-meme.png',
+			'https://img.icons8.com/fluency/96/null/trollface.png',
+			'https://img.icons8.com/color/96/null/feels-guy.png',
+			'https://img.icons8.com/fluency/96/null/lul.png',
+			'https://img.icons8.com/fluency/96/null/monkas.png',
+			'https://img.icons8.com/fluency/96/null/pogchamp.png',
+			'https://img.icons8.com/fluency/96/null/gachi.png',
+			'https://img.icons8.com/fluency/96/null/angry-face-meme.png',
+			'https://img.icons8.com/color-glass/96/null/salt-bae.png',
+			'https://img.icons8.com/color/96/null/ugandan-knuckles.png',
 		];
 	}
 
