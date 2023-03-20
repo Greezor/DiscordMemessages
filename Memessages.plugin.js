@@ -1270,7 +1270,12 @@ module.exports = class Memessages {
 
 		clearTimeout(this.updateTimeout);
 
-		this.aggregateAudio(audio => audio.pause());
+		this.aggregateAudio(audio => (
+			audio.dispatchEvent(
+				new Event('ended')
+			)
+		));
+
 		this.plays = [];
 
 		this.dispatcher.unsubscribe('MESSAGE_CREATE', e => this.onMessage(e));
