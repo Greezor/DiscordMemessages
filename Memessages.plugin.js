@@ -3,7 +3,7 @@
  * @author Greezor
  * @authorId 382062281623863298
  * @description Plays sound memes when receiving messages
- * @version 0.5.1
+ * @version 0.6.0
  * @donate https://boosty.to/greezor
  * @source https://github.com/Greezor/DiscordMemessages
  */
@@ -226,14 +226,7 @@ module.exports = class Memessages {
 		const memeUrl = await this.getMemeSound(message.content);
 
 		if( memeUrl )
-			await this.play(memeUrl, {
-				addToHistory: this.settings.history,
-				props: {
-					muted: this.settings.muted,
-					volume: this.settings.volume,
-					memessage: message,
-				},
-			});
+			await this.play(memeUrl, message);
 	}
 
 	onMessageDelete({ id })
@@ -277,19 +270,13 @@ module.exports = class Memessages {
 		return `https://api.meowpad.me/v2/sounds/preview/${ sounds[0].id }.m4a`;
 	}
 
-	async play(url, params = {})
+	async play(url, message = null)
 	{
 		const audio = new Audio(url);
 
-		if( params.props )
-			for(let [ prop, value ] of Object.entries(params.props))
-				audio[prop] = value;
-
-		let historyCard = null;
-		if( params.addToHistory ){
-			audio.controls = true;
-			
-			let card = historyCard = this.$.el('div', { class: 'memessages--sidebar--card' });
+		let localRefs = {};
+		if( this.settings.history && message ){
+			let card = this.$.el('div', { class: 'memessages--sidebar--card' });
 			let labelWrapper = this.$.el('div');
 			let label = this.$.el('span', { ['data-memessages-tooltip']: true });
 			this.$.css(label, {
@@ -298,7 +285,7 @@ module.exports = class Memessages {
 				'cursor': 'pointer',
 			});
 
-			label.innerText = audio?.memessage?.content ?? '';
+			label.innerText = message?.content ?? '';
 			label.addEventListener('click', () => {
 				DiscordNative.clipboard.copy(label.innerText);
 				BdApi.UI.showToast(this.isLangRU ? 'Скопировано' : 'Copied', {
@@ -309,7 +296,92 @@ module.exports = class Memessages {
 
 			labelWrapper.append(label);
 			card.append(labelWrapper);
-			this.refs.history.prepend(card);
+
+			const player = this.$.el('div', { class: 'memessages--player' });
+			const playBtn = this.$.el('i', { class: 'fa-solid fa-stop' });
+			const progress = this.$.el('div', { class: 'memessages--slider progress' });
+			const downloadBtn = this.$.el('a', { href: audio.src, target: '_blank', download: true });
+			const downloadIcon = this.$.el('i', { class: 'fa-solid fa-download' });
+
+			this.$.css(progress, {
+				'pointer-events': 'none',
+			});
+
+			downloadBtn.append(downloadIcon);
+			player.append(playBtn);
+			player.append(progress);
+			player.append(downloadBtn);
+			card.append(player);
+
+			playBtn.addEventListener('click', () => {
+				if( this.plays.includes(audio) )
+					audio.dispatchEvent(
+						new Event('ended')
+					);
+				else
+					audio.play();
+			});
+
+			// let enabled = false;
+			// const onChange = e => {
+			// 	if( !enabled ) return;
+
+			// 	requestAnimationFrame(async () => {
+			// 		const bounds = progress.getBoundingClientRect();
+
+			// 		let value = Math.max(0, (
+			// 			Math.min(1, (
+			// 				(e.clientX - bounds.x) / bounds.width
+			// 			))
+			// 		));
+
+			// 		audio.currentTime = Math.round(value * audio.duration);
+			// 	});
+			// };
+
+			// progress.addEventListener('mousedown', e => {
+			// 	enabled = true;
+			// 	onChange(e);
+			// });
+
+			// document.addEventListener('mousemove', onChange);
+
+			// document.addEventListener('mouseup', e => {
+			// 	enabled = false;
+			// });
+
+			audio.addEventListener('timeupdate', () => {
+				this.$.css(progress, {
+					'--value': audio.currentTime / audio.duration,
+				});
+			});
+
+			localRefs = {
+				card,
+				playBtn,
+			};
+		}
+
+		audio.addEventListener('play', () => {
+			audio.muted = this.settings.muted;
+			audio.volume = this.settings.volume;
+			audio.memessage = message;
+
+			this.plays.push(audio);
+
+			localRefs?.playBtn?.classList?.add?.('fa-stop');
+			localRefs?.playBtn?.classList?.remove?.('fa-play');
+		});
+
+		await new Promise(resolve => {
+			audio.addEventListener('canplaythrough', () => {
+				audio.play();
+				resolve();
+			}, { once: true });
+		});
+
+		if( localRefs.card ){
+			this.refs.history.prepend(localRefs.card);
 
 			if( this.historyLength >= 100 )
 				this.$.find('.memessages--sidebar--card:last-child', this.refs.history)
@@ -318,26 +390,19 @@ module.exports = class Memessages {
 				this.historyLength++;
 		}
 
-		this.plays.push(audio);
-
-		audio.addEventListener('canplaythrough', () => {
-			audio.play();
-		}, { once: true });
-
 		await new Promise(resolve => {
-			audio.addEventListener('ended', resolve);
+			audio.addEventListener('ended', () => {
+				audio.pause();
+				audio.currentTime = 0;
+
+				this.plays.splice(this.plays.indexOf(audio), 1);
+
+				localRefs?.playBtn?.classList?.add?.('fa-play');
+				localRefs?.playBtn?.classList?.remove?.('fa-stop');
+				
+				resolve();
+			});
 		});
-
-		if( params.addToHistory ){
-			audio.muted = false;
-			audio.volume = 1;
-			audio.currentTime = 0;
-			audio.pause();
-
-			historyCard.append(audio);
-		}
-
-		this.plays.splice(this.plays.indexOf(audio), 1);
 	}
 
 	async aggregateAudio(func)
@@ -687,12 +752,7 @@ module.exports = class Memessages {
 							const sound = getRandomSound();
 							
 							if( sound )
-								this.play(sound, {
-									props: {
-									muted: this.settings.muted,
-									volume: this.settings.volume,
-									},
-								});
+								this.play(sound);
 						}
 					});
 					break;
@@ -746,12 +806,7 @@ module.exports = class Memessages {
 							const sound = getRandomSound();
 							
 							if( sound )
-								this.play(sound, {
-									props: {
-										muted: this.settings.muted,
-										volume: this.settings.volume,
-									},
-								});
+								this.play(sound);
 						}
 
 						value = this.settings[setting.prop];
@@ -766,12 +821,7 @@ module.exports = class Memessages {
 						const sound = getRandomSound();
 
 						if( sound )
-							this.play(sound, {
-								props: {
-									muted: this.settings.muted,
-									volume: this.settings.volume,
-								},
-							});
+							this.play(sound);
 					});
 					break;
 			}
@@ -846,15 +896,19 @@ module.exports = class Memessages {
 			html.theme-dark{
 				--mm--bg: var(--mm-color--gray);
 				--mm--bg-second: var(--mm-color--dark-gray);
+				--mm--bg-negative: var(--mm-color--white);
 				--mm--accent: var(--mm-color--discord);
 				--mm--text: var(--mm-color--white);
+				--mm--text-negative: var(--mm-color--gray);
 			}
 
 			html.theme-light{
 				--mm--bg: var(--mm-color--white);
 				--mm--bg-second: var(--mm-color--light-gray);
+				--mm--bg-negative: var(--mm-color--gray);
 				--mm--accent: var(--mm-color--discord);
 				--mm--text: var(--mm-color--gray);
+				--mm--text-negative: var(--mm-color--white);
 			}
 
 			[data-memessages-tooltip]{
@@ -1218,6 +1272,7 @@ module.exports = class Memessages {
 				height: 10px;
 				background: var(--mm--bg-second);
 				border-radius: 100px;
+				cursor: pointer;
 				--value: 0;
 			}
 
@@ -1250,6 +1305,33 @@ module.exports = class Memessages {
 			.memessages--slider:active,
 			.memessages--slider:active:after{
 				cursor: grabbing;
+			}
+
+			.memessages--slider.progress{
+				margin: 0;
+			}
+
+			.memessages--slider.progress:after{
+				display: none;
+			}
+
+			.memessages--player{
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				gap: 20px;
+			}
+
+			.memessages--player i{
+				margin: -10px;
+				padding: 10px;
+				color: var(--mm--text);
+				transition: all 0.2s ease;
+				cursor: pointer;
+			}
+
+			.memessages--player i:hover{
+				color: var(--mm--accent);
 			}
 
 			.memessages--about{
