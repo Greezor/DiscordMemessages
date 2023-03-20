@@ -688,8 +688,10 @@ module.exports = class Memessages {
 							
 							if( sound )
 								this.play(sound, {
+									props: {
 									muted: this.settings.muted,
 									volume: this.settings.volume,
+									},
 								});
 						}
 					});
@@ -759,7 +761,7 @@ module.exports = class Memessages {
 				case 'button':
 					group.classList.add('clickable');
 					group.addEventListener('click', () => {
-						setting?.action?.();
+						setting?.action?.(this.settings[setting.prop]);
 
 						const sound = getRandomSound();
 
