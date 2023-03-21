@@ -27,7 +27,7 @@ Plays sound memes when receiving messages
 - [x] Sounds history
 - [x] Chaos mode!
 - [x] Auto-update
-- [ ] Sound Modificators
+- [x] Sound Modificators
 - [ ] Hotkeys
 - [ ] Cooldown mode
 
