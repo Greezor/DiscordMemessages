@@ -16,7 +16,7 @@ module.exports = class Memessages {
 
 		this.launchedAt = 0;
 		this.lastMessageID = null;
-		this.plays = [];
+		this.plays = new Set();
 		this.sidebar = false;
 		this.historyLength = 0;
 		this.refs = {};
@@ -102,6 +102,8 @@ module.exports = class Memessages {
 		const findAll = (selector, parent = null) => (parent ?? document).querySelectorAll(selector);
 
 		const mount = (el, selector, firstMount = true) => {
+			if( !el ) return;
+
 			const parent = find(selector);
 
 			if( !parent ){
@@ -125,6 +127,8 @@ module.exports = class Memessages {
 		};
 
 		const css = (el, styles = {}) => {
+			if( !el ) return;
+
 			for(let [ prop, value ] of Object.entries(styles))
 				el.style.setProperty(prop, value);
 		};
@@ -223,10 +227,11 @@ module.exports = class Memessages {
 
 		this.lastMessageID = message.id;
 
-		const memeUrl = await this.getMemeSound(message.content);
+		const modificators = this.getModificators(message.content);
+		const memeUrl = await this.getMemeSound(message.content, modificators);
 
 		if( memeUrl )
-			await this.play(memeUrl, message);
+			await this.createAudio(memeUrl, message, modificators);
 	}
 
 	onMessageDelete({ id })
@@ -253,12 +258,84 @@ module.exports = class Memessages {
 		this.onMessage({ message });
 	}
 
-	async getMemeSound(text)
+	getModificators(text)
 	{
+		let modificators = {
+			x: 1,
+			// gain: 1,
+			rate: 1,
+			// pitch: 0,
+			pitch: false,
+			soundIndex: 0,
+			important: false,
+			lang: null,
+		};
+
+		const rules = [
+			[
+				/^x(\d+)$/,
+				(match, $1) => modificators.x = Math.min(100, Number($1)),
+			],
+			// [
+			// 	/^(\d+)%$/,
+			// 	(match, $1) => modificators.gain = Number($1) / 100,
+			// ],
+			[
+				/^>>(\d+)$/,
+				(match, $1) => modificators.rate = Number($1) / 100,
+			],
+			// [
+			// 	/^#(\+|-)(\d+)$/,
+			// 	(match, $1) => modificators.pitch = Number(`${ $1 }${ Number($2) * 100 }`),
+			// ],
+			[
+				/^#$/,
+				() => modificators.pitch = true,
+			],
+			[
+				/^(\d+)$/,
+				(match, $1) => modificators.soundIndex = Number($1),
+			],
+			[
+				/^!$/,
+				() => modificators.important = true,
+			],
+			[
+				/^(ru|en)$/,
+				(match, $1) => modificators.lang = $1,
+			],
+		];
+
+		for(let [ match, $1 ] of text.matchAll(/\[([^\]]+)\]/gm)){
+			for(let [ reg, apply ] of rules){
+				const result = $1.match(reg);
+
+				if( result )
+					apply(...result);
+			}
+		}
+
+		return modificators;
+	}
+
+	async getMemeSound(text, modificators = {})
+	{
+		text = text
+			.replace(/\[([^\]]+)\]/gm, '')
+			.replace(
+				/(https?:\/\/tenor\.com\/view\/)([^\s]+)/gim,
+				(match, $1, $2) => $2
+					.replace(/(-gif-|-)/gim, ' ')
+					.replace(/\d+$/gim, '')
+					.trim()
+			)
+			.replace(/\s+\s/gm, ' ')
+			.trim();
+
 		const json = await this.fetch({
 			url: `https://api.meowpad.me/v2/sounds/search?q=${ encodeURIComponent(text) }`,
 			headers: {
-				'accept-language': 'ru,en',
+				'accept-language': modificators.lang ?? 'ru,en',
 			},
 		});
 
@@ -267,15 +344,41 @@ module.exports = class Memessages {
 		if( !sounds.length )
 			return null;
 
-		return `https://api.meowpad.me/v2/sounds/preview/${ sounds[0].id }.m4a`;
+		const index = modificators.soundIndex ?? 0;
+
+		return `https://api.meowpad.me/v2/sounds/preview/${ sounds[index].id }.m4a`;
 	}
 
-	async play(url, message = null)
+	async createAudio(url, message = null, modificators = {}, addToHistory = true, autoplay = true)
 	{
 		const audio = new Audio(url);
 
+		await new Promise(resolve => {
+			audio.addEventListener('canplaythrough', resolve);
+		});
+
+		let subAudios = [];
+		for(let i = 1; i < (modificators.x ?? 1); i++){
+			subAudios.push(
+				await this.createAudio(
+					url,
+					message,
+					{
+						...modificators,
+						x: 1,
+						important: false,
+					},
+					false,
+					false,
+				)
+			);
+		}
+		
+		audio.playbackRate = modificators.rate ?? 1;
+		audio.preservesPitch = !(modificators.pitch ?? false);
+
 		let localRefs = {};
-		if( this.settings.history && message ){
+		if( addToHistory && this.settings.history && message ){
 			let card = this.$.el('div', { class: 'memessages--sidebar--card' });
 			let labelWrapper = this.$.el('div');
 			let label = this.$.el('span', { ['data-memessages-tooltip']: true });
@@ -298,23 +401,29 @@ module.exports = class Memessages {
 			card.append(labelWrapper);
 
 			const player = this.$.el('div', { class: 'memessages--player' });
-			const playBtn = this.$.el('i', { class: 'fa-solid fa-stop' });
-			const progress = this.$.el('div', { class: 'memessages--slider progress' });
-			const downloadBtn = this.$.el('a', { href: audio.src, target: '_blank', download: true });
+			const playBtn = this.$.el('i', { class: 'fa-solid fa-play' });
+			const progressBar = this.$.el('div', { class: 'memessages--slider progress' });
+			const downloadBtn = this.$.el('a', { href: audio.src, target: '_blank', download: true, ['data-memessages-tooltip']: true });
 			const downloadIcon = this.$.el('i', { class: 'fa-solid fa-download' });
 
-			this.$.css(progress, {
+			this.$.css(progressBar, {
 				'pointer-events': 'none',
 			});
 
+			this.$.css(downloadBtn, {
+				'--text': `'${ this.isLangRU ? 'Загрузить' : 'Download' }'`,
+				'--offset': 'calc(-100% + 18px)',
+				'--ws': 'nowrap',
+			});
+			
 			downloadBtn.append(downloadIcon);
 			player.append(playBtn);
-			player.append(progress);
+			player.append(progressBar);
 			player.append(downloadBtn);
 			card.append(player);
 
 			playBtn.addEventListener('click', () => {
-				if( this.plays.includes(audio) )
+				if( this.plays.has(audio) )
 					audio.dispatchEvent(
 						new Event('ended')
 					);
@@ -327,7 +436,7 @@ module.exports = class Memessages {
 			// 	if( !enabled ) return;
 
 			// 	requestAnimationFrame(async () => {
-			// 		const bounds = progress.getBoundingClientRect();
+			// 		const bounds = progressBar.getBoundingClientRect();
 
 			// 		let value = Math.max(0, (
 			// 			Math.min(1, (
@@ -339,7 +448,7 @@ module.exports = class Memessages {
 			// 	});
 			// };
 
-			// progress.addEventListener('mousedown', e => {
+			// progressBar.addEventListener('mousedown', e => {
 			// 	enabled = true;
 			// 	onChange(e);
 			// });
@@ -351,14 +460,17 @@ module.exports = class Memessages {
 			// });
 
 			audio.addEventListener('timeupdate', () => {
-				this.$.css(progress, {
+				if( !audio.paused )
+					this.$.css(progressBar, {
 					'--value': audio.currentTime / audio.duration,
 				});
 			});
 
 			localRefs = {
 				card,
+				player,
 				playBtn,
+				progressBar,
 			};
 		}
 
@@ -367,18 +479,43 @@ module.exports = class Memessages {
 			audio.volume = this.settings.volume;
 			audio.memessage = message;
 
-			this.plays.push(audio);
+			this.plays.add(audio);
+
+			for(let subAudio of subAudios)
+				subAudio.play();
 
 			localRefs?.playBtn?.classList?.add?.('fa-stop');
 			localRefs?.playBtn?.classList?.remove?.('fa-play');
+
+			this.$.css(localRefs?.progressBar, { '--value': 0 });
 		});
 
-		await new Promise(resolve => {
-			audio.addEventListener('canplaythrough', () => {
-				audio.play();
-				resolve();
-			}, { once: true });
+		audio.addEventListener('ended', () => {
+			audio.pause();
+			audio.currentTime = 0;
+
+			this.plays.delete(audio);
+
+			for(let subAudio of subAudios)
+				subAudio.dispatchEvent(
+					new Event('ended')
+				);
+
+			localRefs?.playBtn?.classList?.add?.('fa-play');
+			localRefs?.playBtn?.classList?.remove?.('fa-stop');
+
+			this.$.css(localRefs?.progressBar, { '--value': 0 });
 		});
+
+		if( modificators.important )
+			this.aggregateAudio(audio => (
+				audio.dispatchEvent(
+					new Event('ended')
+				)
+			));
+
+		if( autoplay )
+			audio.play();
 
 		if( localRefs.card ){
 			this.refs.history.prepend(localRefs.card);
@@ -390,19 +527,7 @@ module.exports = class Memessages {
 				this.historyLength++;
 		}
 
-		await new Promise(resolve => {
-			audio.addEventListener('ended', () => {
-				audio.pause();
-				audio.currentTime = 0;
-
-				this.plays.splice(this.plays.indexOf(audio), 1);
-
-				localRefs?.playBtn?.classList?.add?.('fa-play');
-				localRefs?.playBtn?.classList?.remove?.('fa-stop');
-				
-				resolve();
-			});
-		});
+		return audio;
 	}
 
 	async aggregateAudio(func)
@@ -752,7 +877,7 @@ module.exports = class Memessages {
 							const sound = getRandomSound();
 							
 							if( sound )
-								this.play(sound);
+								this.createAudio(sound);
 						}
 					});
 					break;
@@ -806,7 +931,7 @@ module.exports = class Memessages {
 							const sound = getRandomSound();
 							
 							if( sound )
-								this.play(sound);
+								this.createAudio(sound);
 						}
 
 						value = this.settings[setting.prop];
@@ -821,7 +946,7 @@ module.exports = class Memessages {
 						const sound = getRandomSound();
 
 						if( sound )
-							this.play(sound);
+							this.createAudio(sound);
 					});
 					break;
 			}
@@ -886,6 +1011,7 @@ module.exports = class Memessages {
 			@import url("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.3.0/css/all.min.css");
 
 			:root{
+				--mm-color--black: #000000;
 				--mm-color--white: #fafafa;
 				--mm-color--dark-gray: #1e1f22;
 				--mm-color--light-gray: #e3e5e8;
@@ -1112,7 +1238,7 @@ module.exports = class Memessages {
 			}
 
 			.memessages--sidebar--scrollbox::-webkit-scrollbar-track{
-				background: #000;
+				background: var(--mm-color--black);
 			}
 
 			.memessages--sidebar--scrollbox::-webkit-scrollbar-thumb{
@@ -1360,7 +1486,7 @@ module.exports = class Memessages {
 			)
 		));
 
-		this.plays = [];
+		this.plays = new Set();
 
 		this.dispatcher.unsubscribe('MESSAGE_CREATE', e => this.onMessage(e));
 		this.dispatcher.unsubscribe('MESSAGE_DELETE', e => this.onMessageDelete(e));
