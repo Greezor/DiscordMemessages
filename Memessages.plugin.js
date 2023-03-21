@@ -3,7 +3,7 @@
  * @author Greezor
  * @authorId 382062281623863298
  * @description Plays sound memes when receiving messages
- * @version 0.7.1
+ * @version 0.7.2
  * @donate https://boosty.to/greezor
  * @source https://github.com/Greezor/DiscordMemessages
  */
@@ -345,8 +345,9 @@ module.exports = class Memessages {
 			return null;
 
 		const index = modificators.soundIndex ?? 0;
+		const sound = sounds?.[index] ?? sounds[sounds.length - 1];
 
-		return `https://api.meowpad.me/v2/sounds/preview/${ sounds[index].id }.m4a`;
+		return `https://api.meowpad.me/v2/sounds/preview/${ sound }.m4a`;
 	}
 
 	audioQueuePush(audio, warn = true)
@@ -536,11 +537,12 @@ module.exports = class Memessages {
 		});
 
 		if( modificators.important )
-			this.aggregateAudio(audio => (
-				audio.dispatchEvent(
-					new Event('ended')
-				)
-			));
+			this.aggregateAudio(a => {
+				if( a !== audio )
+					a.dispatchEvent(
+						new Event('ended')
+					);
+			});
 
 		if( autoplay )
 			audio.play();
