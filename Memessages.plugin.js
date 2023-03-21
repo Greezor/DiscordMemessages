@@ -16,7 +16,7 @@ module.exports = class Memessages {
 
 		this.launchedAt = 0;
 		this.lastMessageID = null;
-		this.plays = new Set();
+		this.audioQueue = new Set();
 		this.sidebar = false;
 		this.historyLength = 0;
 		this.refs = {};
@@ -349,6 +349,25 @@ module.exports = class Memessages {
 		return `https://api.meowpad.me/v2/sounds/preview/${ sounds[index].id }.m4a`;
 	}
 
+	audioQueuePush(audio, warn = true)
+	{
+		if( this.audioQueue.has(audio) )
+			return true;
+
+		if( warn && this.audioQueue.size >= 100 ){
+			BdApi.UI.showToast(this.isLangRU ? 'Слишком много звуков!!!' : 'Too many sounds!!!', {
+				type: 'danger',
+				timeout: 3000,
+			});
+
+			return false;
+		}
+
+		this.audioQueue.add(audio);
+
+		return true;
+	}
+
 	async createAudio(url, message = null, modificators = {}, addToHistory = true, autoplay = true)
 	{
 		const audio = new Audio(url);
@@ -357,21 +376,27 @@ module.exports = class Memessages {
 			audio.addEventListener('canplaythrough', resolve);
 		});
 
+		if( !this.audioQueuePush(audio) )
+			return null;
+
 		let subAudios = [];
 		for(let i = 1; i < (modificators.x ?? 1); i++){
-			subAudios.push(
-				await this.createAudio(
-					url,
-					message,
-					{
-						...modificators,
-						x: 1,
-						important: false,
-					},
-					false,
-					false,
-				)
+			const subAudio = await this.createAudio(
+				url,
+				message,
+				{
+					...modificators,
+					x: 1,
+					important: false,
+				},
+				false,
+				false,
 			);
+
+			if( subAudio )
+				subAudios.push(subAudio);
+			else
+				break;
 		}
 		
 		audio.playbackRate = modificators.rate ?? 1;
@@ -423,7 +448,7 @@ module.exports = class Memessages {
 			card.append(player);
 
 			playBtn.addEventListener('click', () => {
-				if( this.plays.has(audio) )
+				if( this.audioQueue.has(audio) )
 					audio.dispatchEvent(
 						new Event('ended')
 					);
@@ -479,7 +504,10 @@ module.exports = class Memessages {
 			audio.volume = this.settings.volume;
 			audio.memessage = message;
 
-			this.plays.add(audio);
+			if( !this.audioQueuePush(audio) )
+				return audio.dispatchEvent(
+					new Event('ended')
+				);
 
 			for(let subAudio of subAudios)
 				subAudio.play();
@@ -494,7 +522,7 @@ module.exports = class Memessages {
 			audio.pause();
 			audio.currentTime = 0;
 
-			this.plays.delete(audio);
+			this.audioQueue.delete(audio);
 
 			for(let subAudio of subAudios)
 				subAudio.dispatchEvent(
@@ -532,7 +560,7 @@ module.exports = class Memessages {
 
 	async aggregateAudio(func)
 	{
-		for(let audio of this.plays)
+		for(let audio of this.audioQueue)
 			await func(audio);
 	}
 
@@ -1504,7 +1532,7 @@ module.exports = class Memessages {
 			)
 		));
 
-		this.plays = new Set();
+		this.audioQueue = new Set();
 
 		this.dispatcher.unsubscribe('MESSAGE_CREATE', e => this.onMessage(e));
 		this.dispatcher.unsubscribe('MESSAGE_DELETE', e => this.onMessageDelete(e));
