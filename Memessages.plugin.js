@@ -462,8 +462,8 @@ module.exports = class Memessages {
 			audio.addEventListener('timeupdate', () => {
 				if( !audio.paused )
 					this.$.css(progressBar, {
-					'--value': audio.currentTime / audio.duration,
-				});
+						'--value': audio.currentTime / audio.duration,
+					});
 			});
 
 			localRefs = {
@@ -795,7 +795,7 @@ module.exports = class Memessages {
 				label: this.isLangRU ? 'О плагине' : 'About',
 				action: () => {
 					const h = this.React.createElement;
-					BdApi.UI.alert(`${ this.meta.name } ${ this.meta.version }`, (
+					BdApi.UI.showConfirmationModal(`${ this.meta.name } ${ this.meta.version }`, (
 						this.isLangRU
 							? h('div', { class: 'memessages--about' },
 								h('p', null, 'Спасибо за установку плагина =)'),
@@ -839,7 +839,25 @@ module.exports = class Memessages {
 									),
 								),
 							)
-					));
+					), {
+						confirmText: 'OK',
+						cancelText: this.isLangRU ? 'Проверить обновления' : 'Check for updates',
+						onCancel: () => {
+							BdApi.UI.showToast(this.isLangRU ? 'Поиск обновлений...' : 'Search for updates...', {
+								type: 'info',
+								timeout: 3000,
+							});
+
+							setTimeout(async () => {
+								await this.autoUpdate();
+
+								BdApi.UI.showToast(this.isLangRU ? 'Установлена последняя версия' : 'Latest version installed', {
+									type: 'success',
+									timeout: 3000,
+								});
+							}, 1000);
+						},
+					});
 				},
 			},
 		];
