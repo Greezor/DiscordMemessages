@@ -3,7 +3,7 @@
  * @author Greezor
  * @authorId 382062281623863298
  * @description Plays sound memes when receiving messages
- * @version 0.7.3
+ * @version 0.8.0
  * @donate https://boosty.to/greezor
  * @source https://github.com/Greezor/DiscordMemessages
  */
@@ -50,6 +50,8 @@ module.exports = class Memessages {
 			muted: false,
 			volume: 0.5,
 			history: false,
+			historyLimit: 100,
+			soundsLimit: 100,
 			chaosMode: false,
 		};
 
@@ -324,10 +326,12 @@ module.exports = class Memessages {
 			.replace(/\[([^\]]+)\]/gm, '')
 			.replace(
 				/(https?:\/\/tenor\.com\/view\/)([^\s]+)/gim,
-				(match, $1, $2) => $2
-					.replace(/(-gif-|-)/gim, ' ')
-					.replace(/\d+$/gim, '')
-					.trim()
+				(match, $1, $2) => decodeURIComponent(
+					$2
+						.replace(/(-gif-|-)/gim, ' ')
+						.replace(/\d+$/gim, '')
+						.trim()
+				)
 			)
 			.replace(/\s+\s/gm, ' ')
 			.trim();
@@ -350,16 +354,17 @@ module.exports = class Memessages {
 		return `https://api.meowpad.me/v2/sounds/preview/${ sound.id }.m4a`;
 	}
 
-	audioQueuePush(audio, warn = true)
+	audioQueuePush(audio, force = false, warn = true)
 	{
 		if( this.audioQueue.has(audio) )
 			return true;
 
-		if( warn && this.audioQueue.size >= 100 ){
-			BdApi.UI.showToast(this.isLangRU ? 'Слишком много звуков!!!' : 'Too many sounds!!!', {
-				type: 'danger',
-				timeout: 3000,
-			});
+		if( !force && this.audioQueue.size >= this.settings.soundsLimit ){
+			if( warn )
+				BdApi.UI.showToast(this.isLangRU ? 'Слишком много звуков!!!' : 'Too many sounds!!!', {
+					type: 'danger',
+					timeout: 3000,
+				});
 
 			return false;
 		}
@@ -373,11 +378,15 @@ module.exports = class Memessages {
 	{
 		const audio = new Audio(url);
 
+		audio.muted = this.settings.muted;
+		audio.volume = this.settings.volume;
+		audio.memessage = message;
+
 		await new Promise(resolve => {
-			audio.addEventListener('canplaythrough', resolve);
+			audio.addEventListener('canplaythrough', resolve, { once: true });
 		});
 
-		if( !this.audioQueuePush(audio) )
+		if( autoplay && !this.audioQueuePush(audio, !!modificators.important) )
 			return null;
 
 		let subAudios = [];
@@ -429,11 +438,19 @@ module.exports = class Memessages {
 			const player = this.$.el('div', { class: 'memessages--player' });
 			const playBtn = this.$.el('i', { class: 'fa-solid fa-play' });
 			const progressBar = this.$.el('div', { class: 'memessages--slider progress' });
+			const meowpadBtn = this.$.el('a', { href: `https://meowpad.me/sound/${ audio.src.match(/(\d+)\.m4a$/)[1] }`, target: '_blank', ['data-memessages-tooltip']: true });
+			const mewopadIcon = this.$.el('i', { class: 'fa-solid fa-arrow-up-right-from-square' });
 			const downloadBtn = this.$.el('a', { href: audio.src, target: '_blank', download: true, ['data-memessages-tooltip']: true });
 			const downloadIcon = this.$.el('i', { class: 'fa-solid fa-download' });
 
 			this.$.css(progressBar, {
 				'pointer-events': 'none',
+			});
+
+			this.$.css(meowpadBtn, {
+				'--text': `'Meowpad'`,
+				'--offset': 'calc(-50% + 9px)',
+				'--ws': 'nowrap',
 			});
 
 			this.$.css(downloadBtn, {
@@ -442,9 +459,11 @@ module.exports = class Memessages {
 				'--ws': 'nowrap',
 			});
 			
+			meowpadBtn.append(mewopadIcon);
 			downloadBtn.append(downloadIcon);
 			player.append(playBtn);
 			player.append(progressBar);
+			player.append(meowpadBtn);
 			player.append(downloadBtn);
 			card.append(player);
 
@@ -503,7 +522,6 @@ module.exports = class Memessages {
 		audio.addEventListener('play', () => {
 			audio.muted = this.settings.muted;
 			audio.volume = this.settings.volume;
-			audio.memessage = message;
 
 			if( !this.audioQueuePush(audio) )
 				return audio.dispatchEvent(
@@ -550,7 +568,7 @@ module.exports = class Memessages {
 		if( localRefs.card ){
 			this.refs.history.prepend(localRefs.card);
 
-			if( this.historyLength >= 100 )
+			if( this.historyLength >= this.settings.historyLimit )
 				this.$.find('.memessages--sidebar--card:last-child', this.refs.history)
 					.remove();
 			else
@@ -753,7 +771,6 @@ module.exports = class Memessages {
 				type: 'slider',
 				sounds: [
 					'https://api.meowpad.me/v2/sounds/preview/57562.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/48886.m4a',
 					'https://api.meowpad.me/v2/sounds/preview/37525.m4a',
 					'https://api.meowpad.me/v2/sounds/preview/60843.m4a',
 					'https://api.meowpad.me/v2/sounds/preview/39479.m4a',
@@ -762,7 +779,6 @@ module.exports = class Memessages {
 					'https://api.meowpad.me/v2/sounds/preview/1125.m4a',
 					'https://api.meowpad.me/v2/sounds/preview/29.m4a',
 					'https://api.meowpad.me/v2/sounds/preview/46609.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/1216.m4a',
 					'https://api.meowpad.me/v2/sounds/preview/1826.m4a',
 					'https://api.meowpad.me/v2/sounds/preview/39096.m4a',
 					'https://api.meowpad.me/v2/sounds/preview/10190.m4a',
@@ -812,10 +828,44 @@ module.exports = class Memessages {
 					'https://api.meowpad.me/v2/sounds/preview/641.m4a',
 					'https://api.meowpad.me/v2/sounds/preview/62105.m4a',
 					'https://api.meowpad.me/v2/sounds/preview/974.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/1216.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/48886.m4a',
 					'https://www.myinstants.com/media/sounds/00002a5b.mp3',
 				],
 				prop: 'chaosMode',
 				label: this.isLangRU ? 'Режим Хаоса!' : 'Chaos Mode!',
+			},
+			{
+				type: 'input',
+				sounds: [
+					'https://api.meowpad.me/v2/sounds/preview/79117.m4a',
+				],
+				prop: 'historyLimit',
+				label: this.isLangRU ? 'Лимит истории' : 'History limit',
+				options: {
+					min: '1',
+					type: 'number',
+					style: 'width:50px',
+				},
+				action: value => {
+					this.settings.historyLimit = Math.max(1, Number(value));
+				},
+			},
+			{
+				type: 'input',
+				sounds: [
+					'https://api.meowpad.me/v2/sounds/preview/79117.m4a',
+				],
+				prop: 'soundsLimit',
+				label: this.isLangRU ? 'Лимит звуков' : 'Sounds limit',
+				options: {
+					min: '1',
+					type: 'number',
+					style: 'width:50px',
+				},
+				action: value => {
+					this.settings.soundsLimit = Math.max(1, Number(value));
+				},
 			},
 			{
 				type: 'button',
@@ -844,7 +894,7 @@ module.exports = class Memessages {
 										h('span', null, 'Иконки: '),
 										h('a', { href: 'https://fontawesome.com/', target: '_blank' }, 'Font Awesome'),
 										h('span', null, ', '),
-										h('a', { href: 'https://icons8.com/', target: '_blank' }, 'Icon8'),
+										h('a', { href: 'https://icons8.com/', target: '_blank' }, 'Icons8'),
 									),
 								),
 							)
@@ -865,7 +915,7 @@ module.exports = class Memessages {
 										h('span', null, 'Icons: '),
 										h('a', { href: 'https://fontawesome.com/', target: '_blank' }, 'Font Awesome'),
 										h('span', null, ', '),
-										h('a', { href: 'https://icons8.com/', target: '_blank' }, 'Icon8'),
+										h('a', { href: 'https://icons8.com/', target: '_blank' }, 'Icons8'),
 									),
 								),
 							)
@@ -995,6 +1045,40 @@ module.exports = class Memessages {
 
 						if( sound )
 							this.createAudio(sound);
+					});
+					break;
+
+				case 'input':
+					const input = this.$.el('input', { class: 'memessages--input', type: 'text' });
+					group.append(input);
+
+					for(let [ attr, value ] of Object.entries(setting?.options ?? {}))
+						input.setAttribute(attr, value);
+
+					input.value = this.settings[setting.prop];
+
+					input.addEventListener('keypress', e => e.stopPropagation());
+					input.addEventListener('keydown', e => e.stopPropagation());
+					input.addEventListener('keyup', e => e.stopPropagation());
+
+					input.addEventListener('input', e => {
+						e.stopPropagation();
+
+						this.settings = {
+							...this.settings,
+							[setting.prop]: input.value,
+						};
+
+						setting?.action?.(this.settings[setting.prop]);
+
+						input.value = this.settings[setting.prop];
+
+						if( this.settings[setting.prop] ){
+							const sound = getRandomSound();
+							
+							if( sound )
+								this.createAudio(sound);
+						}
 					});
 					break;
 			}
@@ -1487,6 +1571,24 @@ module.exports = class Memessages {
 
 			.memessages--slider.progress:after{
 				display: none;
+			}
+
+			.memessages--input{
+				padding: 0 10px;
+				width: 100%;
+				height: 25px;
+				background: var(--mm--bg);
+				border: none;
+				border-radius: 5px;
+				box-shadow: 0 0 0 1px var(--mm--bg-second);
+				font-size: 14px;
+				line-height: 1;
+				color: var(--mm--text);
+				transition: all 0.2s ease;
+			}
+			
+			.memessages--input:focus{
+				box-shadow: 0 0 0 3px var(--mm--accent);
 			}
 
 			.memessages--player{

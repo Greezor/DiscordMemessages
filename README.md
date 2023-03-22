@@ -31,6 +31,15 @@ Plays sound memes when receiving messages
 - [ ] Hotkeys
 - [ ] Cooldown mode
 
+### Modificators
+
+- [x*N*] - duplicates sound. **N** - count. Default value: N = `1`. Sample: `[x2]`. Max: `100`.
+- [>>*S*] - sets playback rate. **S** - speed in percentages. Default value: S = `100`. Sample: `[>>200]`.
+- [#] - disables automatic pitch preserving. Requires set playback rate.
+- [*I*] - chooses the sound by number from found sounds. **I** - sound index. Default value: I = `0` (chooses the first). Sample: `[1]` (chooses the second).
+- [!] - important flag, disables all sound and start play current.
+- [*L*] - sets language for meowpad search. **L** - language code. Default value: `ru,en` (both). Available values: `ru` or `en`.
+
 ## Support me
 - [Boosty](https://boosty.to/greezor)
 
