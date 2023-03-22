@@ -3,7 +3,7 @@
  * @author Greezor
  * @authorId 382062281623863298
  * @description Plays sound memes when receiving messages
- * @version 0.7.4
+ * @version 0.8.0
  * @donate https://boosty.to/greezor
  * @source https://github.com/Greezor/DiscordMemessages
  */
@@ -50,6 +50,8 @@ module.exports = class Memessages {
 			muted: false,
 			volume: 0.5,
 			history: false,
+			historyLimit: 100,
+			soundsLimit: 100,
 			chaosMode: false,
 		};
 
@@ -326,10 +328,10 @@ module.exports = class Memessages {
 				/(https?:\/\/tenor\.com\/view\/)([^\s]+)/gim,
 				(match, $1, $2) => decodeURIComponent(
 					$2
-					.replace(/(-gif-|-)/gim, ' ')
-					.replace(/\d+$/gim, '')
-					.trim()
-			)
+						.replace(/(-gif-|-)/gim, ' ')
+						.replace(/\d+$/gim, '')
+						.trim()
+				)
 			)
 			.replace(/\s+\s/gm, ' ')
 			.trim();
@@ -359,10 +361,10 @@ module.exports = class Memessages {
 
 		if( !force && this.audioQueue.size >= this.settings.soundsLimit ){
 			if( warn )
-			BdApi.UI.showToast(this.isLangRU ? 'Слишком много звуков!!!' : 'Too many sounds!!!', {
-				type: 'danger',
-				timeout: 3000,
-			});
+				BdApi.UI.showToast(this.isLangRU ? 'Слишком много звуков!!!' : 'Too many sounds!!!', {
+					type: 'danger',
+					timeout: 3000,
+				});
 
 			return false;
 		}
@@ -566,7 +568,7 @@ module.exports = class Memessages {
 		if( localRefs.card ){
 			this.refs.history.prepend(localRefs.card);
 
-			if( this.historyLength >= 100 )
+			if( this.historyLength >= this.settings.historyLimit )
 				this.$.find('.memessages--sidebar--card:last-child', this.refs.history)
 					.remove();
 			else
@@ -834,6 +836,38 @@ module.exports = class Memessages {
 				label: this.isLangRU ? 'Режим Хаоса!' : 'Chaos Mode!',
 			},
 			{
+				type: 'input',
+				sounds: [
+					'https://api.meowpad.me/v2/sounds/preview/79117.m4a',
+				],
+				prop: 'historyLimit',
+				label: this.isLangRU ? 'Лимит истории' : 'History limit',
+				options: {
+					min: '1',
+					type: 'number',
+					style: 'width:50px',
+				},
+				action: value => {
+					this.settings.historyLimit = Math.max(1, Number(value));
+				},
+			},
+			{
+				type: 'input',
+				sounds: [
+					'https://api.meowpad.me/v2/sounds/preview/79117.m4a',
+				],
+				prop: 'soundsLimit',
+				label: this.isLangRU ? 'Лимит звуков' : 'Sounds limit',
+				options: {
+					min: '1',
+					type: 'number',
+					style: 'width:50px',
+				},
+				action: value => {
+					this.settings.soundsLimit = Math.max(1, Number(value));
+				},
+			},
+			{
 				type: 'button',
 				sounds: [
 					'https://api.meowpad.me/v2/sounds/preview/38297.m4a',
@@ -1011,6 +1045,40 @@ module.exports = class Memessages {
 
 						if( sound )
 							this.createAudio(sound);
+					});
+					break;
+
+				case 'input':
+					const input = this.$.el('input', { class: 'memessages--input', type: 'text' });
+					group.append(input);
+
+					for(let [ attr, value ] of Object.entries(setting?.options ?? {}))
+						input.setAttribute(attr, value);
+
+					input.value = this.settings[setting.prop];
+
+					input.addEventListener('keypress', e => e.stopPropagation());
+					input.addEventListener('keydown', e => e.stopPropagation());
+					input.addEventListener('keyup', e => e.stopPropagation());
+
+					input.addEventListener('input', e => {
+						e.stopPropagation();
+
+						this.settings = {
+							...this.settings,
+							[setting.prop]: input.value,
+						};
+
+						setting?.action?.(this.settings[setting.prop]);
+
+						input.value = this.settings[setting.prop];
+
+						if( this.settings[setting.prop] ){
+							const sound = getRandomSound();
+							
+							if( sound )
+								this.createAudio(sound);
+						}
 					});
 					break;
 			}
@@ -1503,6 +1571,24 @@ module.exports = class Memessages {
 
 			.memessages--slider.progress:after{
 				display: none;
+			}
+
+			.memessages--input{
+				padding: 0 10px;
+				width: 100%;
+				height: 25px;
+				background: var(--mm--bg);
+				border: none;
+				border-radius: 5px;
+				box-shadow: 0 0 0 1px var(--mm--bg-second);
+				font-size: 14px;
+				line-height: 1;
+				color: var(--mm--text);
+				transition: all 0.2s ease;
+			}
+			
+			.memessages--input:focus{
+				box-shadow: 0 0 0 3px var(--mm--accent);
 			}
 
 			.memessages--player{
