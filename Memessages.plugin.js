@@ -3,7 +3,7 @@
  * @author Greezor
  * @authorId 382062281623863298
  * @description Plays sound memes when receiving messages
- * @version 0.7.3
+ * @version 0.7.4
  * @donate https://boosty.to/greezor
  * @source https://github.com/Greezor/DiscordMemessages
  */
@@ -324,10 +324,12 @@ module.exports = class Memessages {
 			.replace(/\[([^\]]+)\]/gm, '')
 			.replace(
 				/(https?:\/\/tenor\.com\/view\/)([^\s]+)/gim,
-				(match, $1, $2) => $2
+				(match, $1, $2) => decodeURIComponent(
+					$2
 					.replace(/(-gif-|-)/gim, ' ')
 					.replace(/\d+$/gim, '')
 					.trim()
+			)
 			)
 			.replace(/\s+\s/gm, ' ')
 			.trim();
@@ -350,12 +352,13 @@ module.exports = class Memessages {
 		return `https://api.meowpad.me/v2/sounds/preview/${ sound.id }.m4a`;
 	}
 
-	audioQueuePush(audio, warn = true)
+	audioQueuePush(audio, force = false, warn = true)
 	{
 		if( this.audioQueue.has(audio) )
 			return true;
 
-		if( warn && this.audioQueue.size >= 100 ){
+		if( !force && this.audioQueue.size >= this.settings.soundsLimit ){
+			if( warn )
 			BdApi.UI.showToast(this.isLangRU ? 'Слишком много звуков!!!' : 'Too many sounds!!!', {
 				type: 'danger',
 				timeout: 3000,
@@ -373,11 +376,15 @@ module.exports = class Memessages {
 	{
 		const audio = new Audio(url);
 
+		audio.muted = this.settings.muted;
+		audio.volume = this.settings.volume;
+		audio.memessage = message;
+
 		await new Promise(resolve => {
-			audio.addEventListener('canplaythrough', resolve);
+			audio.addEventListener('canplaythrough', resolve, { once: true });
 		});
 
-		if( !this.audioQueuePush(audio) )
+		if( autoplay && !this.audioQueuePush(audio, !!modificators.important) )
 			return null;
 
 		let subAudios = [];
@@ -503,7 +510,6 @@ module.exports = class Memessages {
 		audio.addEventListener('play', () => {
 			audio.muted = this.settings.muted;
 			audio.volume = this.settings.volume;
-			audio.memessage = message;
 
 			if( !this.audioQueuePush(audio) )
 				return audio.dispatchEvent(
@@ -753,7 +759,6 @@ module.exports = class Memessages {
 				type: 'slider',
 				sounds: [
 					'https://api.meowpad.me/v2/sounds/preview/57562.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/48886.m4a',
 					'https://api.meowpad.me/v2/sounds/preview/37525.m4a',
 					'https://api.meowpad.me/v2/sounds/preview/60843.m4a',
 					'https://api.meowpad.me/v2/sounds/preview/39479.m4a',
@@ -762,7 +767,6 @@ module.exports = class Memessages {
 					'https://api.meowpad.me/v2/sounds/preview/1125.m4a',
 					'https://api.meowpad.me/v2/sounds/preview/29.m4a',
 					'https://api.meowpad.me/v2/sounds/preview/46609.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/1216.m4a',
 					'https://api.meowpad.me/v2/sounds/preview/1826.m4a',
 					'https://api.meowpad.me/v2/sounds/preview/39096.m4a',
 					'https://api.meowpad.me/v2/sounds/preview/10190.m4a',
@@ -812,6 +816,8 @@ module.exports = class Memessages {
 					'https://api.meowpad.me/v2/sounds/preview/641.m4a',
 					'https://api.meowpad.me/v2/sounds/preview/62105.m4a',
 					'https://api.meowpad.me/v2/sounds/preview/974.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/1216.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/48886.m4a',
 					'https://www.myinstants.com/media/sounds/00002a5b.mp3',
 				],
 				prop: 'chaosMode',
@@ -844,7 +850,7 @@ module.exports = class Memessages {
 										h('span', null, 'Иконки: '),
 										h('a', { href: 'https://fontawesome.com/', target: '_blank' }, 'Font Awesome'),
 										h('span', null, ', '),
-										h('a', { href: 'https://icons8.com/', target: '_blank' }, 'Icon8'),
+										h('a', { href: 'https://icons8.com/', target: '_blank' }, 'Icons8'),
 									),
 								),
 							)
@@ -865,7 +871,7 @@ module.exports = class Memessages {
 										h('span', null, 'Icons: '),
 										h('a', { href: 'https://fontawesome.com/', target: '_blank' }, 'Font Awesome'),
 										h('span', null, ', '),
-										h('a', { href: 'https://icons8.com/', target: '_blank' }, 'Icon8'),
+										h('a', { href: 'https://icons8.com/', target: '_blank' }, 'Icons8'),
 									),
 								),
 							)
