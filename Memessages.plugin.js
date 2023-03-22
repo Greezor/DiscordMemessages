@@ -436,11 +436,19 @@ module.exports = class Memessages {
 			const player = this.$.el('div', { class: 'memessages--player' });
 			const playBtn = this.$.el('i', { class: 'fa-solid fa-play' });
 			const progressBar = this.$.el('div', { class: 'memessages--slider progress' });
+			const meowpadBtn = this.$.el('a', { href: `https://meowpad.me/sound/${ audio.src.match(/(\d+)\.m4a$/)[1] }`, target: '_blank', ['data-memessages-tooltip']: true });
+			const mewopadIcon = this.$.el('i', { class: 'fa-solid fa-arrow-up-right-from-square' });
 			const downloadBtn = this.$.el('a', { href: audio.src, target: '_blank', download: true, ['data-memessages-tooltip']: true });
 			const downloadIcon = this.$.el('i', { class: 'fa-solid fa-download' });
 
 			this.$.css(progressBar, {
 				'pointer-events': 'none',
+			});
+
+			this.$.css(meowpadBtn, {
+				'--text': `'Meowpad'`,
+				'--offset': 'calc(-50% + 9px)',
+				'--ws': 'nowrap',
 			});
 
 			this.$.css(downloadBtn, {
@@ -449,9 +457,11 @@ module.exports = class Memessages {
 				'--ws': 'nowrap',
 			});
 			
+			meowpadBtn.append(mewopadIcon);
 			downloadBtn.append(downloadIcon);
 			player.append(playBtn);
 			player.append(progressBar);
+			player.append(meowpadBtn);
 			player.append(downloadBtn);
 			card.append(player);
 
