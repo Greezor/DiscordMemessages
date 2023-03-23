@@ -524,7 +524,7 @@ module.exports = class Memessages {
 			};
 		}
 
-		audio.addEventListener('play', () => {
+		audio.addEventListener('playing', () => {
 			audio.muted = this.settings.muted;
 			audio.volume = this.settings.volume;
 
