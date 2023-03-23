@@ -3,7 +3,7 @@
  * @author Greezor
  * @authorId 382062281623863298
  * @description Plays sound memes when receiving messages
- * @version 0.8.1
+ * @version 0.8.2
  * @donate https://boosty.to/greezor
  * @source https://github.com/Greezor/DiscordMemessages
  */
@@ -536,7 +536,13 @@ module.exports = class Memessages {
 		audio.volume = this.settings.volume;		
 
 		await Promise.all([
-			audio.play(),
+			new Promise(resolve => {
+				(function play(){
+					audio.play()
+						.then(resolve)
+						.catch(play);
+				})()
+			}),
 			...audio.subAudios.map(subAudio => (
 				this.playAudio(subAudio)
 			))
