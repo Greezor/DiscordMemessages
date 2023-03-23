@@ -536,7 +536,13 @@ module.exports = class Memessages {
 		audio.volume = this.settings.volume;		
 
 		await Promise.all([
-			audio.play(),
+			new Promise(resolve => {
+				(function play(){
+					audio.play()
+						.then(resolve)
+						.catch(play);
+				})()
+			}),
 			...audio.subAudios.map(subAudio => (
 				this.playAudio(subAudio)
 			))
