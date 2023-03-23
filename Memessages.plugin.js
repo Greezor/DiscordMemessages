@@ -3,7 +3,7 @@
  * @author Greezor
  * @authorId 382062281623863298
  * @description Plays sound memes when receiving messages
- * @version 0.8.0
+ * @version 0.8.1
  * @donate https://boosty.to/greezor
  * @source https://github.com/Greezor/DiscordMemessages
  */
@@ -18,7 +18,6 @@ module.exports = class Memessages {
 		this.lastMessageID = null;
 		this.audioQueue = new Set();
 		this.sidebar = false;
-		this.historyLength = 0;
 		this.refs = {};
 
 		this._settings = null;
@@ -241,9 +240,8 @@ module.exports = class Memessages {
 		if( !this.pluginEnabled ) return;
 
 		this.aggregateAudio(audio => {
-			if( audio?.memessage?.id === id ){
-				audio.dispatchEvent( new Event('ended') );
-			}
+			if( audio?.memessage?.id === id )
+				this.stopAudio(audio);
 		});
 	}
 
@@ -351,35 +349,14 @@ module.exports = class Memessages {
 		return `https://api.meowpad.me/v2/sounds/preview/${ sound.id }.m4a`;
 	}
 
-	audioQueuePush(audio, force = false, warn = true)
-	{
-		if( this.audioQueue.has(audio) )
-			return true;
-
-		if( !force && this.audioQueue.size >= this.settings.soundsLimit ){
-			if( warn )
-				BdApi.UI.showToast(this.isLangRU ? 'Слишком много звуков!!!' : 'Too many sounds!!!', {
-					type: 'danger',
-					timeout: 3000,
-				});
-
-			return false;
-		}
-
-		this.audioQueue.add(audio);
-
-		return true;
-	}
-
 	async createAudio(url, message = null, modificators = {}, addToHistory = true, autoplay = true)
 	{
 		const audio = new Audio(url);
 
 		audio.memessage = message;
+		audio.subAudios = [];
 
-		audio.muted = this.settings.muted;
-		audio.volume = this.settings.volume;
-
+		audio.muted = true;
 		audio.playbackRate = modificators.rate ?? 1;
 		audio.preservesPitch = !(modificators.pitch ?? false);
 
@@ -390,19 +367,20 @@ module.exports = class Memessages {
 				resolve();
 		});
 
-		if(
-			!this.pluginEnabled
-			||
-			(
-				autoplay
-				&&
-				!this.audioQueuePush(audio, !!modificators.important)
-			)
-		)	return null;
+		if( !this.pluginEnabled )
+			return null;
 
-		let subAudios = [];
-		for(let i = 1; i < (modificators.x ?? 1); i++)
-			subAudios.push(
+		const audiosCount = modificators.x ?? 1;
+
+		if( audiosCount == 0 )
+			return null;
+
+		await audio.play();
+		audio.pause();
+		audio.currentTime = 0;
+
+		for(let i = 1; i < audiosCount; i++)
+			audio.subAudios.push(
 				await this.createAudio(
 					url,
 					message,
@@ -416,7 +394,7 @@ module.exports = class Memessages {
 				)
 			);
 
-		let localRefs = {};
+		let playerUI = {};
 		if( addToHistory && this.settings.history && message ){
 			let card = this.$.el('div', { class: 'memessages--sidebar--card' });
 			let labelWrapper = this.$.el('div');
@@ -469,9 +447,9 @@ module.exports = class Memessages {
 
 			playBtn.addEventListener('click', () => {
 				if( this.audioQueue.has(audio) )
-					audio.dispatchEvent( new Event('ended') );
+					this.stopAudio(audio, playerUI);
 				else
-					audio.play();
+					this.playAudio(audio, playerUI);
 			});
 
 			this.$.css(progressBar, {
@@ -493,7 +471,7 @@ module.exports = class Memessages {
 
 			// 		audio.currentTime = Math.round(value * audio.duration);
 
-			// 		for(let subAudio of subAudios)
+			// 		for(let subAudio of audio.subAudios)
 			// 			subAudio.currentTime = audio.currentTime;
 			// 	});
 			// };
@@ -510,13 +488,12 @@ module.exports = class Memessages {
 			// });
 
 			audio.addEventListener('timeupdate', () => {
-				if( !audio.paused )
-					this.$.css(progressBar, {
-						'--value': audio.currentTime / audio.duration,
-					});
+				this.$.css(progressBar, {
+					'--value': audio.currentTime / audio.duration,
+				});
 			});
 
-			localRefs = {
+			playerUI = {
 				card,
 				player,
 				playBtn,
@@ -524,63 +501,79 @@ module.exports = class Memessages {
 			};
 		}
 
-		audio.addEventListener('playing', () => {
-			audio.muted = this.settings.muted;
-			audio.volume = this.settings.volume;
-
-			if( !this.audioQueuePush(audio) )
-				return audio.dispatchEvent( new Event('ended') );
-
-			for(let subAudio of subAudios)
-				subAudio.play();
-
-			localRefs?.playBtn?.classList?.add?.('fa-stop');
-			localRefs?.playBtn?.classList?.remove?.('fa-play');
-
-			this.$.css(localRefs?.progressBar, { '--value': 0 });
-		});
-
 		audio.addEventListener('ended', () => {
-			audio.pause();
-			audio.currentTime = 0;
-
-			this.audioQueue.delete(audio);
-
-			for(let subAudio of subAudios)
-				subAudio.dispatchEvent( new Event('ended') );
-
-			localRefs?.playBtn?.classList?.add?.('fa-play');
-			localRefs?.playBtn?.classList?.remove?.('fa-stop');
-
-			this.$.css(localRefs?.progressBar, { '--value': 0 });
+			this.stopAudio(audio, playerUI);
 		});
 
 		if( modificators.important )
-			this.aggregateAudio(a => {
-				if( a !== audio )
-					a.dispatchEvent( new Event('ended') );
+			this.aggregateAudio(audio => {
+				if( message && audio?.memessage?.channel_id == message?.channel_id )
+					this.stopAudio(audio);
 			});
 
 		if( autoplay )
-			audio.play();
+			await this.playAudio(audio, playerUI);
 
-		if( localRefs.card ){
-			this.refs.history.prepend(localRefs.card);
-
-			if( this.historyLength >= this.settings.historyLimit )
-				this.$.find('.memessages--sidebar--card:last-child', this.refs.history)
-					.remove();
-			else
-				this.historyLength++;
+		if( playerUI.card ){
+			this.refs.history.prepend(playerUI.card);
+			this.cutHistory();
 		}
 
 		return audio;
+	}
+
+	async playAudio(audio, ui = null)
+	{
+		if( this.audioQueue.has(audio) ) return;
+
+		if( this.audioQueue.size >= this.settings.soundsLimit )
+			return BdApi.UI.showToast(this.isLangRU ? 'Слишком много звуков!!!' : 'Too many sounds!!!', {
+				type: 'danger',
+				timeout: 3000,
+			});
+
+		audio.muted = this.settings.muted;
+		audio.volume = this.settings.volume;		
+
+		await Promise.all([
+			audio.play(),
+			...audio.subAudios.map(subAudio => (
+				this.playAudio(subAudio)
+			))
+		]);
+
+		this.audioQueue.add(audio);
+
+		ui?.playBtn?.classList?.add?.('fa-stop');
+		ui?.playBtn?.classList?.remove?.('fa-play');
+	}
+
+	stopAudio(audio, ui = null)
+	{
+		this.audioQueue.delete(audio);
+
+		audio.pause();
+		audio.currentTime = 0;
+
+		for(let subAudio of audio.subAudios)
+			this.stopAudio(subAudio);
+
+		ui?.playBtn?.classList?.add?.('fa-play');
+		ui?.playBtn?.classList?.remove?.('fa-stop');
+
+		this.$.css(ui?.progressBar, { '--value': 0 });
 	}
 
 	async aggregateAudio(func)
 	{
 		for(let audio of this.audioQueue)
 			await func(audio);
+	}
+
+	cutHistory()
+	{
+		this.$.findAll(`.memessages--sidebar--card:nth-child(${ this.settings.historyLimit }) ~ .memessages--sidebar--card`, this.refs.history)
+			.forEach(overLimit => overLimit.remove());
 	}
 
 	render()
@@ -683,7 +676,7 @@ module.exports = class Memessages {
 
 				this.aggregateAudio(audio => {
 					if( audio?.memessage?.channel_id == channelId )
-						audio.dispatchEvent( new Event('ended') );
+						this.stopAudio(audio);
 				});
 			}else{
 				this.settings = {
@@ -817,7 +810,6 @@ module.exports = class Memessages {
 				label: this.isLangRU ? 'Отображать историю звуков' : 'Show sound history',
 				action: () => {
 					history.innerHTML = '';
-					this.historyLength = 0;
 				},
 			},
 			{
@@ -853,6 +845,7 @@ module.exports = class Memessages {
 				},
 				action: value => {
 					this.settings.historyLimit = Math.max(1, Number(value));
+					this.cutHistory();
 				},
 			},
 			{
@@ -1635,7 +1628,7 @@ module.exports = class Memessages {
 		clearTimeout(this.updateTimeout);
 
 		this.aggregateAudio(audio => (
-			audio.dispatchEvent( new Event('ended') )
+			this.stopAudio(audio)
 		));
 
 		this.audioQueue = new Set();
@@ -1647,7 +1640,6 @@ module.exports = class Memessages {
 		this.unrender();
 
 		this.sidebar = false;
-		this.historyLength = 0;
 		this.unrender = () => {};
 	}
 
