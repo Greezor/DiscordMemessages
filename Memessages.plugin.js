@@ -233,7 +233,7 @@ module.exports = class Memessages {
 		const memeUrl = await this.getMemeSound(message.content, modificators);
 
 		if( memeUrl )
-			await this.createAudio(memeUrl, message, modificators);
+			this.createAudio(memeUrl, message, modificators);
 	}
 
 	onMessageDelete({ id })
@@ -242,9 +242,7 @@ module.exports = class Memessages {
 
 		this.aggregateAudio(audio => {
 			if( audio?.memessage?.id === id ){
-				audio.dispatchEvent(
-					new Event('ended')
-				);
+				audio.dispatchEvent( new Event('ended') );
 			}
 		});
 	}
@@ -264,9 +262,7 @@ module.exports = class Memessages {
 	{
 		let modificators = {
 			x: 1,
-			// gain: 1,
 			rate: 1,
-			// pitch: 0,
 			pitch: false,
 			soundIndex: 0,
 			important: false,
@@ -278,18 +274,10 @@ module.exports = class Memessages {
 				/^x(\d+)$/,
 				(match, $1) => modificators.x = Math.min(100, Number($1)),
 			],
-			// [
-			// 	/^(\d+)%$/,
-			// 	(match, $1) => modificators.gain = Number($1) / 100,
-			// ],
 			[
 				/^>>(\d+)$/,
 				(match, $1) => modificators.rate = Number($1) / 100,
 			],
-			// [
-			// 	/^#(\+|-)(\d+)$/,
-			// 	(match, $1) => modificators.pitch = Number(`${ $1 }${ Number($2) * 100 }`),
-			// ],
 			[
 				/^#$/,
 				() => modificators.pitch = true,
@@ -305,6 +293,12 @@ module.exports = class Memessages {
 			[
 				/^(ru|en)$/,
 				(match, $1) => modificators.lang = $1,
+			],
+
+			// dev
+			[
+				/^log$/,
+				() => console.log(this),
 			],
 		];
 
@@ -335,6 +329,9 @@ module.exports = class Memessages {
 			)
 			.replace(/\s+\s/gm, ' ')
 			.trim();
+
+		if( !text )
+			return null;
 
 		const json = await this.fetch({
 			url: `https://api.meowpad.me/v2/sounds/search?q=${ encodeURIComponent(text) }`,
@@ -378,39 +375,46 @@ module.exports = class Memessages {
 	{
 		const audio = new Audio(url);
 
+		audio.memessage = message;
+
 		audio.muted = this.settings.muted;
 		audio.volume = this.settings.volume;
-		audio.memessage = message;
+
+		audio.playbackRate = modificators.rate ?? 1;
+		audio.preservesPitch = !(modificators.pitch ?? false);
 
 		await new Promise(resolve => {
 			audio.addEventListener('canplaythrough', resolve, { once: true });
+
+			if( audio.readyState > 3 )
+				resolve();
 		});
 
-		if( autoplay && !this.audioQueuePush(audio, !!modificators.important) )
-			return null;
+		if(
+			!this.pluginEnabled
+			||
+			(
+				autoplay
+				&&
+				!this.audioQueuePush(audio, !!modificators.important)
+			)
+		)	return null;
 
 		let subAudios = [];
-		for(let i = 1; i < (modificators.x ?? 1); i++){
-			const subAudio = await this.createAudio(
-				url,
-				message,
-				{
-					...modificators,
-					x: 1,
-					important: false,
-				},
-				false,
-				false,
+		for(let i = 1; i < (modificators.x ?? 1); i++)
+			subAudios.push(
+				await this.createAudio(
+					url,
+					message,
+					{
+						...modificators,
+						x: 1,
+						important: false,
+					},
+					false,
+					false,
+				)
 			);
-
-			if( subAudio )
-				subAudios.push(subAudio);
-			else
-				break;
-		}
-		
-		audio.playbackRate = modificators.rate ?? 1;
-		audio.preservesPitch = !(modificators.pitch ?? false);
 
 		let localRefs = {};
 		if( addToHistory && this.settings.history && message ){
@@ -443,10 +447,6 @@ module.exports = class Memessages {
 			const downloadBtn = this.$.el('a', { href: audio.src, target: '_blank', download: true, ['data-memessages-tooltip']: true });
 			const downloadIcon = this.$.el('i', { class: 'fa-solid fa-download' });
 
-			this.$.css(progressBar, {
-				'pointer-events': 'none',
-			});
-
 			this.$.css(meowpadBtn, {
 				'--text': `'Meowpad'`,
 				'--offset': 'calc(-50% + 9px)',
@@ -469,11 +469,13 @@ module.exports = class Memessages {
 
 			playBtn.addEventListener('click', () => {
 				if( this.audioQueue.has(audio) )
-					audio.dispatchEvent(
-						new Event('ended')
-					);
+					audio.dispatchEvent( new Event('ended') );
 				else
 					audio.play();
+			});
+
+			this.$.css(progressBar, {
+				'pointer-events': 'none',
 			});
 
 			// let enabled = false;
@@ -490,6 +492,9 @@ module.exports = class Memessages {
 			// 		));
 
 			// 		audio.currentTime = Math.round(value * audio.duration);
+
+			// 		for(let subAudio of subAudios)
+			// 			subAudio.currentTime = audio.currentTime;
 			// 	});
 			// };
 
@@ -524,9 +529,7 @@ module.exports = class Memessages {
 			audio.volume = this.settings.volume;
 
 			if( !this.audioQueuePush(audio) )
-				return audio.dispatchEvent(
-					new Event('ended')
-				);
+				return audio.dispatchEvent( new Event('ended') );
 
 			for(let subAudio of subAudios)
 				subAudio.play();
@@ -544,9 +547,7 @@ module.exports = class Memessages {
 			this.audioQueue.delete(audio);
 
 			for(let subAudio of subAudios)
-				subAudio.dispatchEvent(
-					new Event('ended')
-				);
+				subAudio.dispatchEvent( new Event('ended') );
 
 			localRefs?.playBtn?.classList?.add?.('fa-play');
 			localRefs?.playBtn?.classList?.remove?.('fa-stop');
@@ -557,9 +558,7 @@ module.exports = class Memessages {
 		if( modificators.important )
 			this.aggregateAudio(a => {
 				if( a !== audio )
-					a.dispatchEvent(
-						new Event('ended')
-					);
+					a.dispatchEvent( new Event('ended') );
 			});
 
 		if( autoplay )
@@ -681,6 +680,11 @@ module.exports = class Memessages {
 				};
 
 				this.$.css(channelBtn, { '--text': `'${ channelBtnLabelOn }'` });
+
+				this.aggregateAudio(audio => {
+					if( audio?.memessage?.channel_id == channelId )
+						audio.dispatchEvent( new Event('ended') );
+				});
 			}else{
 				this.settings = {
 					...this.settings,
@@ -845,7 +849,7 @@ module.exports = class Memessages {
 				options: {
 					min: '1',
 					type: 'number',
-					style: 'width:50px',
+					style: 'width: 50px; text-align: center;',
 				},
 				action: value => {
 					this.settings.historyLimit = Math.max(1, Number(value));
@@ -861,7 +865,7 @@ module.exports = class Memessages {
 				options: {
 					min: '1',
 					type: 'number',
-					style: 'width:50px',
+					style: 'width: 50px; text-align: center;',
 				},
 				action: value => {
 					this.settings.soundsLimit = Math.max(1, Number(value));
@@ -877,7 +881,7 @@ module.exports = class Memessages {
 					const h = this.React.createElement;
 					BdApi.UI.showConfirmationModal(`${ this.meta.name } ${ this.meta.version }`, (
 						this.isLangRU
-							? h('div', { class: 'memessages--about' },
+							? h('div', { class: 'memessages--modal' },
 								h('p', null, 'Спасибо за установку плагина =)'),
 								h('p', null,
 									h('span', null, 'Если вам понравился плагин, вы можете поддержать меня тут: '),
@@ -898,7 +902,7 @@ module.exports = class Memessages {
 									),
 								),
 							)
-							: h('div', { class: 'memessages--about' },
+							: h('div', { class: 'memessages--modal' },
 								h('p', null, 'Thank you for installing the plugin =)'),
 								h('p', null,
 									h('span', null, 'If you like the plugin, you can support me here: '),
@@ -1610,11 +1614,11 @@ module.exports = class Memessages {
 				color: var(--mm--accent);
 			}
 
-			.memessages--about{
+			.memessages--modal{
 				color: var(--text-normal);
 			}
 
-			.memessages--about a{
+			.memessages--modal a{
 				color: var(--brand-500);
 			}
 		`);
@@ -1631,9 +1635,7 @@ module.exports = class Memessages {
 		clearTimeout(this.updateTimeout);
 
 		this.aggregateAudio(audio => (
-			audio.dispatchEvent(
-				new Event('ended')
-			)
+			audio.dispatchEvent( new Event('ended') )
 		));
 
 		this.audioQueue = new Set();
