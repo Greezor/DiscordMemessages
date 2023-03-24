@@ -3,7 +3,7 @@
  * @author Greezor
  * @authorId 382062281623863298
  * @description Plays sound memes when receiving messages
- * @version 0.8.2
+ * @version 0.8.3
  * @donate https://boosty.to/greezor
  * @source https://github.com/Greezor/DiscordMemessages
  */
@@ -229,10 +229,12 @@ module.exports = class Memessages {
 		this.lastMessageID = message.id;
 
 		const modificators = this.getModificators(message.content);
-		const memeUrl = await this.getMemeSound(message.content, modificators);
+		const meta = await this.getMemeSound(message.content, modificators);
 
-		if( memeUrl )
-			this.createAudio(memeUrl, message, modificators);
+		if( meta ){
+			const url = `https://api.meowpad.me/v2/sounds/preview/${ meta.id }.m4a`;
+			this.createAudio(url, meta, message, modificators);
+		}
 	}
 
 	onMessageDelete({ id })
@@ -343,15 +345,20 @@ module.exports = class Memessages {
 		if( !sounds.length )
 			return null;
 
-		const index = modificators.soundIndex ?? 0;
-		const sound = sounds?.[index] ?? sounds[sounds.length - 1];
-
-		return `https://api.meowpad.me/v2/sounds/preview/${ sound.id }.m4a`;
+		return (
+			sounds?.[modificators.soundIndex ?? 0]
+			??
+			sounds[sounds.length - 1]
+		);
 	}
 
-	async createAudio(url, message = null, modificators = {}, addToHistory = true, autoplay = true)
+	async createAudio(url, meta = null, message = null, modificators = {}, addToHistory = true, autoplay = true)
 	{
-		const audio = new Audio(url);
+		const audio = new Audio();
+		
+		const ctx = new AudioContext();
+		const source = ctx.createMediaElementSource(audio);
+		source.connect(ctx.destination);
 
 		audio.memessage = message;
 		audio.subAudios = [];
@@ -360,8 +367,16 @@ module.exports = class Memessages {
 		audio.playbackRate = modificators.rate ?? 1;
 		audio.preservesPitch = !(modificators.pitch ?? false);
 
-		await new Promise(resolve => {
+		await new Promise(async resolve => {
 			audio.addEventListener('canplaythrough', resolve, { once: true });
+
+			if( !url.startsWith('blob:') ){
+				const bin = await this.fetch({ url, headers: { 'Content-Type': 'audio/m4a' } });
+				const blob = new Blob([ bin.buffer ], { type: 'audio/m4a' });
+				url = URL.createObjectURL(blob);
+			}
+
+			audio.src = url;
 
 			if( audio.readyState > 3 )
 				resolve();
@@ -375,14 +390,11 @@ module.exports = class Memessages {
 		if( audiosCount == 0 )
 			return null;
 
-		await audio.play();
-		audio.pause();
-		audio.currentTime = 0;
-
 		for(let i = 1; i < audiosCount; i++)
 			audio.subAudios.push(
-				await this.createAudio(
+				this.createAudio(
 					url,
+					meta,
 					message,
 					{
 						...modificators,
@@ -393,6 +405,8 @@ module.exports = class Memessages {
 					false,
 				)
 			);
+
+		audio.subAudios = await Promise.all(audio.subAudios);
 
 		let playerUI = {};
 		if( addToHistory && this.settings.history && message ){
@@ -420,9 +434,9 @@ module.exports = class Memessages {
 			const player = this.$.el('div', { class: 'memessages--player' });
 			const playBtn = this.$.el('i', { class: 'fa-solid fa-play' });
 			const progressBar = this.$.el('div', { class: 'memessages--slider progress' });
-			const meowpadBtn = this.$.el('a', { href: `https://meowpad.me/sound/${ audio.src.match(/(\d+)\.m4a$/)[1] }`, target: '_blank', ['data-memessages-tooltip']: true });
+			const meowpadBtn = this.$.el('a', { href: `https://meowpad.me/sound/${ meta?.id ?? 0 }`, target: '_blank', ['data-memessages-tooltip']: true });
 			const mewopadIcon = this.$.el('i', { class: 'fa-solid fa-arrow-up-right-from-square' });
-			const downloadBtn = this.$.el('a', { href: audio.src, target: '_blank', download: true, ['data-memessages-tooltip']: true });
+			const downloadBtn = this.$.el('a', { href: audio.src, target: '_blank', download: `${ meta?.slug ?? 'audio' }.m4a`, ['data-memessages-tooltip']: true });
 			const downloadIcon = this.$.el('i', { class: 'fa-solid fa-download' });
 
 			this.$.css(meowpadBtn, {
@@ -441,7 +455,7 @@ module.exports = class Memessages {
 			downloadBtn.append(downloadIcon);
 			player.append(playBtn);
 			player.append(progressBar);
-			player.append(meowpadBtn);
+			if( meta ) player.append(meowpadBtn);
 			player.append(downloadBtn);
 			card.append(player);
 
@@ -452,40 +466,36 @@ module.exports = class Memessages {
 					this.playAudio(audio, playerUI);
 			});
 
-			this.$.css(progressBar, {
-				'pointer-events': 'none',
+			let enabled = false;
+			const onChange = e => {
+				if( !enabled ) return;
+
+				requestAnimationFrame(async () => {
+					const bounds = progressBar.getBoundingClientRect();
+
+					let value = Math.max(0, (
+						Math.min(1, (
+							(e.clientX - bounds.x) / bounds.width
+						))
+					));
+
+					audio.currentTime = Math.round(value * audio.duration);
+
+					for(let subAudio of audio.subAudios)
+						subAudio.currentTime = audio.currentTime;
+				});
+			};
+
+			progressBar.addEventListener('mousedown', e => {
+				enabled = true;
+				onChange(e);
 			});
 
-			// let enabled = false;
-			// const onChange = e => {
-			// 	if( !enabled ) return;
+			document.addEventListener('mousemove', onChange);
 
-			// 	requestAnimationFrame(async () => {
-			// 		const bounds = progressBar.getBoundingClientRect();
-
-			// 		let value = Math.max(0, (
-			// 			Math.min(1, (
-			// 				(e.clientX - bounds.x) / bounds.width
-			// 			))
-			// 		));
-
-			// 		audio.currentTime = Math.round(value * audio.duration);
-
-			// 		for(let subAudio of audio.subAudios)
-			// 			subAudio.currentTime = audio.currentTime;
-			// 	});
-			// };
-
-			// progressBar.addEventListener('mousedown', e => {
-			// 	enabled = true;
-			// 	onChange(e);
-			// });
-
-			// document.addEventListener('mousemove', onChange);
-
-			// document.addEventListener('mouseup', e => {
-			// 	enabled = false;
-			// });
+			document.addEventListener('mouseup', e => {
+				enabled = false;
+			});
 
 			audio.addEventListener('timeupdate', () => {
 				this.$.css(progressBar, {
@@ -1130,7 +1140,7 @@ module.exports = class Memessages {
 					type: 'success',
 					timeout: 0,
 				})
-			)
+			);
 		}
 	}
 
