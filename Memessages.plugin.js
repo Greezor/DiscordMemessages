@@ -3,7 +3,7 @@
  * @author Greezor
  * @authorId 382062281623863298
  * @description Plays sound memes when receiving messages
- * @version 0.8.3
+ * @version 0.9.0
  * @donate https://boosty.to/greezor
  * @source https://github.com/Greezor/DiscordMemessages
  */
@@ -229,7 +229,7 @@ module.exports = class Memessages {
 		this.lastMessageID = message.id;
 
 		const modificators = this.getModificators(message.content);
-		const meta = await this.getMemeSound(message.content, modificators);
+		const meta = await this.getMemeSoundMeta(message.content, modificators);
 
 		if( meta ){
 			const url = `https://api.meowpad.me/v2/sounds/preview/${ meta.id }.m4a`;
@@ -261,7 +261,9 @@ module.exports = class Memessages {
 	getModificators(text)
 	{
 		let modificators = {
-			x: 1,
+			echo: false,
+			bass: 0,
+			gain: 1,
 			rate: 1,
 			pitch: false,
 			soundIndex: 0,
@@ -271,8 +273,20 @@ module.exports = class Memessages {
 
 		const rules = [
 			[
-				/^x(\d+)$/,
-				(match, $1) => modificators.x = Math.min(100, Number($1)),
+				/^echo$/,
+				() => modificators.echo = true,
+			],
+			[
+				/^bb(\d+)$/,
+				(match, $1) => modificators.bass = Number($1) * 10,
+			],
+			[
+				/^(\d+)%$/,
+				(match, $1) => modificators.gain = Number($1) / 100,
+			],
+			[
+				/^(\d+)%$/,
+				(match, $1) => modificators.gain = Number($1) / 100,
 			],
 			[
 				/^>>(\d+)$/,
@@ -314,7 +328,7 @@ module.exports = class Memessages {
 		return modificators;
 	}
 
-	async getMemeSound(text, modificators = {})
+	async getMemeSoundMeta(text, modificators = {})
 	{
 		text = text
 			.replace(/\[([^\]]+)\]/gm, '')
@@ -355,60 +369,10 @@ module.exports = class Memessages {
 	async createAudio(url, meta = null, message = null, modificators = {}, addToHistory = true, autoplay = true)
 	{
 		const audio = new Audio();
-		
-		const ctx = new AudioContext();
-		const source = ctx.createMediaElementSource(audio);
-		source.connect(ctx.destination);
 
 		audio.memessage = message;
-		audio.subAudios = [];
+		audio.ui = {};
 
-		audio.muted = true;
-		audio.playbackRate = modificators.rate ?? 1;
-		audio.preservesPitch = !(modificators.pitch ?? false);
-
-		await new Promise(async resolve => {
-			audio.addEventListener('canplaythrough', resolve, { once: true });
-
-			if( !url.startsWith('blob:') ){
-				const bin = await this.fetch({ url, headers: { 'Content-Type': 'audio/m4a' } });
-				const blob = new Blob([ bin.buffer ], { type: 'audio/m4a' });
-				url = URL.createObjectURL(blob);
-			}
-
-			audio.src = url;
-
-			if( audio.readyState > 3 )
-				resolve();
-		});
-
-		if( !this.pluginEnabled )
-			return null;
-
-		const audiosCount = modificators.x ?? 1;
-
-		if( audiosCount == 0 )
-			return null;
-
-		for(let i = 1; i < audiosCount; i++)
-			audio.subAudios.push(
-				this.createAudio(
-					url,
-					meta,
-					message,
-					{
-						...modificators,
-						x: 1,
-						important: false,
-					},
-					false,
-					false,
-				)
-			);
-
-		audio.subAudios = await Promise.all(audio.subAudios);
-
-		let playerUI = {};
 		if( addToHistory && this.settings.history && message ){
 			let card = this.$.el('div', { class: 'memessages--sidebar--card' });
 			let labelWrapper = this.$.el('div');
@@ -432,12 +396,20 @@ module.exports = class Memessages {
 			card.append(labelWrapper);
 
 			const player = this.$.el('div', { class: 'memessages--player' });
-			const playBtn = this.$.el('i', { class: 'fa-solid fa-play' });
+			const playBtn = this.$.el('i', { class: 'fa-solid fa-circle-notch fa-spin' });
 			const progressBar = this.$.el('div', { class: 'memessages--slider progress' });
 			const meowpadBtn = this.$.el('a', { href: `https://meowpad.me/sound/${ meta?.id ?? 0 }`, target: '_blank', ['data-memessages-tooltip']: true });
 			const mewopadIcon = this.$.el('i', { class: 'fa-solid fa-arrow-up-right-from-square' });
 			const downloadBtn = this.$.el('a', { href: audio.src, target: '_blank', download: `${ meta?.slug ?? 'audio' }.m4a`, ['data-memessages-tooltip']: true });
 			const downloadIcon = this.$.el('i', { class: 'fa-solid fa-download' });
+
+			this.$.css(playBtn, {
+				'pointer-events': 'none',
+			});
+
+			this.$.css(progressBar, {
+				'pointer-events': 'none',
+			});
 
 			this.$.css(meowpadBtn, {
 				'--text': `'Meowpad'`,
@@ -461,9 +433,9 @@ module.exports = class Memessages {
 
 			playBtn.addEventListener('click', () => {
 				if( this.audioQueue.has(audio) )
-					this.stopAudio(audio, playerUI);
+					this.stopAudio(audio);
 				else
-					this.playAudio(audio, playerUI);
+					this.playAudio(audio);
 			});
 
 			let enabled = false;
@@ -480,9 +452,6 @@ module.exports = class Memessages {
 					));
 
 					audio.currentTime = Math.round(value * audio.duration);
-
-					for(let subAudio of audio.subAudios)
-						subAudio.currentTime = audio.currentTime;
 				});
 			};
 
@@ -503,7 +472,10 @@ module.exports = class Memessages {
 				});
 			});
 
-			playerUI = {
+			this.refs.history.prepend(card);
+			this.cutHistory();
+
+			audio.ui = {
 				card,
 				player,
 				playBtn,
@@ -511,8 +483,74 @@ module.exports = class Memessages {
 			};
 		}
 
+		await new Promise(async resolve => {
+			audio.addEventListener('canplaythrough', resolve, { once: true });
+
+			if( !url.startsWith('blob:') ){
+				const bin = await this.fetch({ url, headers: { 'Content-Type': 'audio/m4a' } });
+				const blob = new Blob([ bin.buffer ], { type: 'audio/m4a' });
+				url = URL.createObjectURL(blob);
+			}
+
+			audio.src = url;
+			audio.load();
+
+			if( audio.readyState > 3 )
+				resolve();
+		});
+
+		if( !this.pluginEnabled )
+			return null;
+
+		audio?.ui?.playBtn?.classList?.add?.('fa-play');
+		audio?.ui?.playBtn?.classList?.remove?.('fa-circle-notch');
+		audio?.ui?.playBtn?.classList?.remove?.('fa-spin');
+
+		this.$.css(audio?.ui?.playBtn, {
+			'pointer-events': '',
+		});
+
+		this.$.css(audio?.ui?.progressBar, {
+			'pointer-events': '',
+		});
+
+		const ctx = new AudioContext();
+		const source = ctx.createMediaElementSource(audio);
+		
+		const echoInput = ctx.createGain();
+		const echoDelay = ctx.createDelay();
+		const echoFeedback = ctx.createGain();
+		const echoWetLevel = ctx.createGain();
+		const echoOutput = ctx.createGain();
+		const bass = ctx.createBiquadFilter();
+		const gain = ctx.createGain();
+
+		echoInput.connect(echoDelay);
+		echoDelay.connect(echoFeedback).connect(echoDelay);
+		echoDelay.connect(echoWetLevel).connect(echoOutput);
+
+		source
+			.connect(echoInput)
+			.connect(echoOutput)
+			.connect(bass)
+			.connect(gain)
+			.connect(ctx.destination);
+
+		echoDelay.delayTime.value = modificators.echo ? 0.2 : 0;
+		echoFeedback.gain.value = modificators.echo ? 0.3 : 0;
+		echoWetLevel.gain.value = modificators.echo ? 0.3 : 0;
+
+		bass.type = 'lowshelf';
+		bass.frequency.value = 200;
+		bass.gain.value = modificators.bass ?? 0;
+
+		gain.gain.value = modificators.gain ?? 1;
+
+		audio.playbackRate = modificators.rate ?? 1;
+		audio.preservesPitch = !(modificators.pitch ?? false);
+
 		audio.addEventListener('ended', () => {
-			this.stopAudio(audio, playerUI);
+			this.stopAudio(audio);
 		});
 
 		if( modificators.important )
@@ -522,17 +560,12 @@ module.exports = class Memessages {
 			});
 
 		if( autoplay )
-			await this.playAudio(audio, playerUI);
-
-		if( playerUI.card ){
-			this.refs.history.prepend(playerUI.card);
-			this.cutHistory();
-		}
+			await this.playAudio(audio);
 
 		return audio;
 	}
 
-	async playAudio(audio, ui = null)
+	async playAudio(audio)
 	{
 		if( this.audioQueue.has(audio) ) return;
 
@@ -543,41 +576,33 @@ module.exports = class Memessages {
 			});
 
 		audio.muted = this.settings.muted;
-		audio.volume = this.settings.volume;		
+		audio.volume = this.settings.volume;
 
-		await Promise.all([
-			new Promise(resolve => {
-				(function play(){
-					audio.play()
-						.then(resolve)
-						.catch(play);
-				})()
-			}),
-			...audio.subAudios.map(subAudio => (
-				this.playAudio(subAudio)
-			))
-		]);
+		await new Promise(resolve => {
+			(function play(){
+				audio.play()
+					.then(resolve)
+					.catch(play);
+			})()
+		});
 
 		this.audioQueue.add(audio);
 
-		ui?.playBtn?.classList?.add?.('fa-stop');
-		ui?.playBtn?.classList?.remove?.('fa-play');
+		audio?.ui?.playBtn?.classList?.add?.('fa-stop');
+		audio?.ui?.playBtn?.classList?.remove?.('fa-play');
 	}
 
-	stopAudio(audio, ui = null)
+	stopAudio(audio)
 	{
 		this.audioQueue.delete(audio);
 
 		audio.pause();
 		audio.currentTime = 0;
 
-		for(let subAudio of audio.subAudios)
-			this.stopAudio(subAudio);
+		audio?.ui?.playBtn?.classList?.add?.('fa-play');
+		audio?.ui?.playBtn?.classList?.remove?.('fa-stop');
 
-		ui?.playBtn?.classList?.add?.('fa-play');
-		ui?.playBtn?.classList?.remove?.('fa-stop');
-
-		this.$.css(ui?.progressBar, { '--value': 0 });
+		this.$.css(audio?.ui?.progressBar, { '--value': 0 });
 	}
 
 	async aggregateAudio(func)
