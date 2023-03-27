@@ -33,9 +33,11 @@ Plays sound memes when receiving messages
 
 ### Modificators
 
-- [x*N*] - duplicates sound. **N** - count. Default value: N = `1`. Sample: `[x2]`. Max: `100`.
+- [*G*%] - sound gain. **G** - percentages. Default value: G = `100`. Sample: `[200%]`.
+- [bb*N*] - bass boost. **N** - level. Default value: N = `0`. Sample: `[bb1]`.
 - [>>*S*] - sets playback rate. **S** - speed in percentages. Default value: S = `100`. Sample: `[>>200]`.
 - [#] - disables automatic pitch preserving. Requires set playback rate.
+- [echo] - adds echo.
 - [*I*] - chooses the sound by number from found sounds. **I** - sound index. Default value: I = `0` (chooses the first). Sample: `[1]` (chooses the second).
 - [!] - important flag, disables all sound and start play current.
 - [*L*] - sets language for meowpad search. **L** - language code. Default value: `ru,en` (both). Available values: `ru` or `en`.
