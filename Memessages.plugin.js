@@ -261,11 +261,11 @@ module.exports = class Memessages {
 	getModificators(text)
 	{
 		let modificators = {
-			echo: false,
-			bass: 0,
 			gain: 1,
+			bass: 0,
 			rate: 1,
 			pitch: false,
+			echo: false,
 			soundIndex: 0,
 			important: false,
 			lang: null,
@@ -273,20 +273,12 @@ module.exports = class Memessages {
 
 		const rules = [
 			[
-				/^echo$/,
-				() => modificators.echo = true,
+				/^(\d+)%$/,
+				(match, $1) => modificators.gain = Number($1) / 100,
 			],
 			[
 				/^bb(\d+)$/,
 				(match, $1) => modificators.bass = Number($1) * 10,
-			],
-			[
-				/^(\d+)%$/,
-				(match, $1) => modificators.gain = Number($1) / 100,
-			],
-			[
-				/^(\d+)%$/,
-				(match, $1) => modificators.gain = Number($1) / 100,
 			],
 			[
 				/^>>(\d+)$/,
@@ -295,6 +287,10 @@ module.exports = class Memessages {
 			[
 				/^#$/,
 				() => modificators.pitch = true,
+			],
+			[
+				/^echo$/,
+				() => modificators.echo = true,
 			],
 			[
 				/^(\d+)$/,
@@ -347,22 +343,33 @@ module.exports = class Memessages {
 		if( !text )
 			return null;
 
+		const getPage = async (page = 1) => {
 		const json = await this.fetch({
-			url: `https://api.meowpad.me/v2/sounds/search?q=${ encodeURIComponent(text) }`,
+				url: `https://api.meowpad.me/v2/sounds/search?q=${ encodeURIComponent(text) }&page=${ page }`,
 			headers: {
 				'accept-language': modificators.lang ?? 'ru,en',
 			},
 		});
 
-		const { sounds } = JSON.parse(json);
+			return JSON.parse(json);
+		};
 
-		if( !sounds.length )
+		let page = await getPage();
+
+		if( !page.sounds.length )
 			return null;
 
+		let soundNumber = modificators.soundIndex ?? 0;
+		let pageIndex = Math.min( page.meta.totalPages - 1, Math.floor(soundNumber / page.sounds.length) );
+		let soundIndex = soundNumber % page.sounds.length;
+
+		if( pageIndex > 0 )
+			page = await getPage(pageIndex + 1);
+
 		return (
-			sounds?.[modificators.soundIndex ?? 0]
+			page.sounds?.[soundIndex]
 			??
-			sounds[sounds.length - 1]
+			page.sounds[page.sounds.length - 1]
 		);
 	}
 
