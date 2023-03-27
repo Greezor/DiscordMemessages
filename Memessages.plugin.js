@@ -3,7 +3,7 @@
  * @author Greezor
  * @authorId 382062281623863298
  * @description Plays sound memes when receiving messages
- * @version 0.9.0
+ * @version 0.9.1
  * @donate https://boosty.to/greezor
  * @source https://github.com/Greezor/DiscordMemessages
  */
@@ -14,7 +14,7 @@ module.exports = class Memessages {
 	{
 		this.meta = meta;
 
-		this.launchedAt = 0;
+		this.pluginEnabled = false;
 		this.lastMessageID = null;
 		this.audioQueue = new Set();
 		this.sidebar = false;
@@ -22,21 +22,11 @@ module.exports = class Memessages {
 
 		this._settings = null;
 
-		this.unrender = () => {};
+		this.destroy = () => {};
 
 		this.getMemeIcon = this.createShuffleCycle(
 			this.memeIcons
 		);
-	}
-
-	get pluginEnabled()
-	{
-		return !!this.launchedAt;
-	}
-
-	set pluginEnabled(value)
-	{
-		this.launchedAt = value ? Date.now() : 0;
 	}
 
 	get settings()
@@ -87,8 +77,6 @@ module.exports = class Memessages {
 
 	get $()
 	{
-		const currentLaunch = this.launchedAt;
-
 		const el = (tag, attrs = {}) => {
 			let elem = document.createElement(tag);
 
@@ -102,6 +90,39 @@ module.exports = class Memessages {
 
 		const findAll = (selector, parent = null) => (parent ?? document).querySelectorAll(selector);
 
+		const eventListeners = [];
+
+		const on = (target, event, listener, options) => {
+			target?.addEventListener(event, listener, options);
+			eventListeners.push({ target, event, listener, options });
+		};
+
+		const off = (target, event) => {
+			for(let [ i, eventListener ] of eventListeners.entries()){
+				if(
+					(
+						!target
+						||
+						eventListener.target === target
+					)
+					&&
+					(
+						!event
+						||
+						eventListener.event === event
+					)
+				){
+					eventListener.target?.removeEventListener(
+						eventListener.event,
+						eventListener.listener,
+						eventListener.options,
+					);
+					
+					eventListeners.splice(i, 1);
+				}
+			}
+		};
+
 		const mount = (el, selector, firstMount = true) => {
 			if( !el ) return;
 
@@ -109,7 +130,7 @@ module.exports = class Memessages {
 
 			if( !parent ){
 				if( !firstMount )
-					document.addEventListener('click', () => {
+					on(document, 'click', () => {
 						setTimeout(() => mount(el, selector, false), 100);
 					}, { capture: true, once: true });
 
@@ -119,12 +140,12 @@ module.exports = class Memessages {
 			parent.append(el);
 
 			BdApi.DOM.onRemoved(el, () => {
-				if( this.launchedAt === currentLaunch )
+				if( this.pluginEnabled )
 					mount(el, selector, false);
 			});
 
 			if( firstMount )
-				this.extendUnrender(() => el.remove());
+				this.onDestroy(() => el.remove());
 		};
 
 		const css = (el, styles = {}) => {
@@ -138,6 +159,8 @@ module.exports = class Memessages {
 			el,
 			find,
 			findAll,
+			on,
+			off,
 			mount,
 			css,
 		};
@@ -261,11 +284,11 @@ module.exports = class Memessages {
 	getModificators(text)
 	{
 		let modificators = {
-			echo: false,
-			bass: 0,
 			gain: 1,
+			bass: 0,
 			rate: 1,
 			pitch: false,
+			echo: false,
 			soundIndex: 0,
 			important: false,
 			lang: null,
@@ -273,20 +296,12 @@ module.exports = class Memessages {
 
 		const rules = [
 			[
-				/^echo$/,
-				() => modificators.echo = true,
+				/^(\d+)%$/,
+				(match, $1) => modificators.gain = Number($1) / 100,
 			],
 			[
 				/^bb(\d+)$/,
 				(match, $1) => modificators.bass = Number($1) * 10,
-			],
-			[
-				/^(\d+)%$/,
-				(match, $1) => modificators.gain = Number($1) / 100,
-			],
-			[
-				/^(\d+)%$/,
-				(match, $1) => modificators.gain = Number($1) / 100,
 			],
 			[
 				/^>>(\d+)$/,
@@ -295,6 +310,10 @@ module.exports = class Memessages {
 			[
 				/^#$/,
 				() => modificators.pitch = true,
+			],
+			[
+				/^echo$/,
+				() => modificators.echo = true,
 			],
 			[
 				/^(\d+)$/,
@@ -347,22 +366,33 @@ module.exports = class Memessages {
 		if( !text )
 			return null;
 
-		const json = await this.fetch({
-			url: `https://api.meowpad.me/v2/sounds/search?q=${ encodeURIComponent(text) }`,
-			headers: {
-				'accept-language': modificators.lang ?? 'ru,en',
-			},
-		});
+		const getPage = async (page = 1) => {
+			const json = await this.fetch({
+				url: `https://api.meowpad.me/v2/sounds/search?q=${ encodeURIComponent(text) }&page=${ page }`,
+				headers: {
+					'accept-language': modificators.lang ?? 'ru,en',
+				},
+			});
 
-		const { sounds } = JSON.parse(json);
+			return JSON.parse(json);
+		};
 
-		if( !sounds.length )
+		let page = await getPage();
+
+		if( !page.sounds.length )
 			return null;
 
+		let soundNumber = modificators.soundIndex ?? 0;
+		let pageIndex = Math.min( page.meta.totalPages - 1, Math.floor(soundNumber / page.sounds.length) );
+		let soundIndex = soundNumber % page.sounds.length;
+
+		if( pageIndex > 0 )
+			page = await getPage(pageIndex + 1);
+
 		return (
-			sounds?.[modificators.soundIndex ?? 0]
+			page.sounds?.[soundIndex]
 			??
-			sounds[sounds.length - 1]
+			page.sounds[page.sounds.length - 1]
 		);
 	}
 
@@ -384,7 +414,7 @@ module.exports = class Memessages {
 			});
 
 			label.innerText = message?.content ?? '';
-			label.addEventListener('click', () => {
+			this.$.on(label, 'click', () => {
 				DiscordNative.clipboard.copy(label.innerText);
 				BdApi.UI.showToast(this.isLangRU ? 'Скопировано' : 'Copied', {
 					type: 'info',
@@ -431,7 +461,7 @@ module.exports = class Memessages {
 			player.append(downloadBtn);
 			card.append(player);
 
-			playBtn.addEventListener('click', () => {
+			this.$.on(playBtn, 'click', () => {
 				if( this.audioQueue.has(audio) )
 					this.stopAudio(audio);
 				else
@@ -455,18 +485,18 @@ module.exports = class Memessages {
 				});
 			};
 
-			progressBar.addEventListener('mousedown', e => {
+			this.$.on(progressBar, 'mousedown', e => {
 				enabled = true;
 				onChange(e);
 			});
 
-			document.addEventListener('mousemove', onChange);
+			this.$.on(document, 'mousemove', onChange);
 
-			document.addEventListener('mouseup', e => {
+			this.$.on(document, 'mouseup', e => {
 				enabled = false;
 			});
 
-			audio.addEventListener('timeupdate', () => {
+			this.$.on(audio, 'timeupdate', () => {
 				this.$.css(progressBar, {
 					'--value': audio.currentTime / audio.duration,
 				});
@@ -484,7 +514,7 @@ module.exports = class Memessages {
 		}
 
 		await new Promise(async resolve => {
-			audio.addEventListener('canplaythrough', resolve, { once: true });
+			this.$.on(audio, 'canplaythrough', resolve, { once: true });
 
 			if( !url.startsWith('blob:') ){
 				const bin = await this.fetch({ url, headers: { 'Content-Type': 'audio/m4a' } });
@@ -549,7 +579,7 @@ module.exports = class Memessages {
 		audio.playbackRate = modificators.rate ?? 1;
 		audio.preservesPitch = !(modificators.pitch ?? false);
 
-		audio.addEventListener('ended', () => {
+		this.$.on(audio, 'ended', () => {
 			this.stopAudio(audio);
 		});
 
@@ -619,10 +649,6 @@ module.exports = class Memessages {
 
 	render()
 	{
-		const currentLaunch = this.launchedAt;
-
-		
-
 		const muteBtnLabelMute = this.isLangRU ? 'Отключить звук' : 'Mute';
 		const muteBtnLabelUnmute = this.isLangRU ? 'Включить звук' : 'Unmute';
 		const muteBtn = this.$.el('div', {
@@ -647,7 +673,7 @@ module.exports = class Memessages {
 			this.$.css(muteBtn, { '--text': `'${ muteBtnLabelUnmute }'` });
 		}
 
-		muteBtn.addEventListener('click', () => {
+		this.$.on(muteBtn, 'click', () => {
 			this.settings = {
 				...this.settings,
 				muted: !this.settings.muted,
@@ -701,7 +727,7 @@ module.exports = class Memessages {
 			this.$.css(channelBtn, { '--text': `'${ channelBtnLabelOff }'` });
 		}
 
-		channelBtn.addEventListener('click', () => {
+		this.$.on(channelBtn, 'click', () => {
 			channelBtn.classList.toggle('on');
 
 			const channelId = this.channelStore.getChannelId();
@@ -734,7 +760,7 @@ module.exports = class Memessages {
 		});
 
 		const onChannelChange = ({ channelId }) => {
-			if( this.launchedAt != currentLaunch ) return;
+			if( !this.pluginEnabled ) return;
 
 			if( channelId ){
 				channelBtn.classList.remove('hide');
@@ -752,7 +778,7 @@ module.exports = class Memessages {
 		};
 
 		this.dispatcher.subscribe('CHANNEL_SELECT', onChannelChange);
-		this.extendUnrender(() => {
+		this.onDestroy(() => {
 			this.dispatcher.unsubscribe('CHANNEL_SELECT', onChannelChange);
 		});
 
@@ -770,7 +796,7 @@ module.exports = class Memessages {
 		const sidebarBtnImg = this.$.el('img', { src: this.memeIcon });
 		sidebarBtn.append(sidebarBtnImg);
 
-		sidebarBtn.addEventListener('click', () => {
+		this.$.on(sidebarBtn, 'click', () => {
 			this.sidebar = true;
 			sidebar.classList.add('open');
 
@@ -792,12 +818,12 @@ module.exports = class Memessages {
 		sidebar.append(sidebarScrollbox);
 		sidebar.append(sidebarCloseBtn);
 
-		sidebarCloseBtn.addEventListener('click', () => {
+		this.$.on(sidebarCloseBtn, 'click', () => {
 			this.sidebar = false;
 			sidebar.classList.remove('open');
 		});
 
-		sidebarScrollbox.addEventListener('scroll', () => {
+		this.$.on(sidebarScrollbox, 'scroll', () => {
 			if( sidebarScrollbox.scrollTop > 20 )
 				sidebarSettings.classList.add('shadow');
 			else
@@ -999,7 +1025,7 @@ module.exports = class Memessages {
 					if( this.settings[setting.prop] )
 						toggle.classList.add('on');
 
-					toggle.addEventListener('click', () => {
+					this.$.on(toggle, 'click', () => {
 						toggle.classList.toggle('on');
 
 						this.settings = {
@@ -1049,14 +1075,14 @@ module.exports = class Memessages {
 						});
 					};
 
-					slider.addEventListener('mousedown', e => {
+					this.$.on(slider, 'mousedown', e => {
 						enabled = true;
 						onChange(e);
 					});
 
-					document.addEventListener('mousemove', onChange);
+					this.$.on(document, 'mousemove', onChange);
 
-					document.addEventListener('mouseup', e => {
+					this.$.on(document, 'mouseup', e => {
 						if( !enabled ) return;
 						
 						enabled = false;
@@ -1076,7 +1102,7 @@ module.exports = class Memessages {
 				
 				case 'button':
 					group.classList.add('clickable');
-					group.addEventListener('click', () => {
+					this.$.on(group, 'click', () => {
 						setting?.action?.(this.settings[setting.prop]);
 
 						const sound = getRandomSound();
@@ -1095,11 +1121,11 @@ module.exports = class Memessages {
 
 					input.value = this.settings[setting.prop];
 
-					input.addEventListener('keypress', e => e.stopPropagation());
-					input.addEventListener('keydown', e => e.stopPropagation());
-					input.addEventListener('keyup', e => e.stopPropagation());
+					this.$.on(input, 'keypress', e => e.stopPropagation());
+					this.$.on(input, 'keydown', e => e.stopPropagation());
+					this.$.on(input, 'keyup', e => e.stopPropagation());
 
-					input.addEventListener('input', e => {
+					this.$.on(input, 'input', e => {
 						e.stopPropagation();
 
 						this.settings = {
@@ -1125,12 +1151,12 @@ module.exports = class Memessages {
 		this.$.mount(sidebar, '[class^="app-"]');
 	}
 
-	extendUnrender(func)
+	onDestroy(after)
 	{
-		const beforeUnrender = this.unrender;
-		this.unrender = () => {
-			beforeUnrender();
-			func();
+		const before = this.destroy;
+		this.destroy = () => {
+			before();
+			after();
 		};
 	}
 	
@@ -1173,9 +1199,22 @@ module.exports = class Memessages {
 	{
 		this.pluginEnabled = true;
 
-		this.dispatcher.subscribe('MESSAGE_CREATE', e => this.onMessage(e));
-		this.dispatcher.subscribe('MESSAGE_DELETE', e => this.onMessageDelete(e));
-		this.dispatcher.subscribe('MESSAGE_UPDATE', e => this.onMessageEdit(e));
+		const onMsg = e => this.onMessage(e);
+		const onMsgDelete = e => this.onMessageDelete(e);
+		const onMsgEdit = e => this.onMessageEdit(e);
+
+		this.dispatcher.subscribe('MESSAGE_CREATE', onMsg);
+		this.dispatcher.subscribe('MESSAGE_DELETE', onMsgDelete);
+		this.dispatcher.subscribe('MESSAGE_UPDATE', onMsgEdit);
+
+		this.onDestroy(() => {
+			this.dispatcher.unsubscribe('MESSAGE_CREATE', onMsg);
+			this.dispatcher.unsubscribe('MESSAGE_DELETE', onMsgDelete);
+			this.dispatcher.unsubscribe('MESSAGE_UPDATE', onMsgEdit);
+		});
+
+		// this.$.on(document, 'keydown', e => this.onKeydown(e));
+		// this.$.on(document, 'keyup', e => this.onKeyup(e));
 
 		BdApi.DOM.addStyle(this.meta.name, `
 			@import url("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.3.0/css/all.min.css");
@@ -1672,16 +1711,10 @@ module.exports = class Memessages {
 			this.stopAudio(audio)
 		));
 
-		this.audioQueue = new Set();
-
-		this.dispatcher.unsubscribe('MESSAGE_CREATE', e => this.onMessage(e));
-		this.dispatcher.unsubscribe('MESSAGE_DELETE', e => this.onMessageDelete(e));
-		this.dispatcher.unsubscribe('MESSAGE_UPDATE', e => this.onMessageEdit(e));
+		this.$.off();
 		BdApi.DOM.removeStyle(this.meta.name);
-		this.unrender();
 
-		this.sidebar = false;
-		this.unrender = () => {};
+		this.destroy();
 	}
 
 }
