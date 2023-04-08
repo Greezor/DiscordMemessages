@@ -3,7 +3,7 @@
  * @author Greezor
  * @authorId 382062281623863298
  * @description Plays sound memes when receiving messages
- * @version 0.9.2
+ * @version 0.9.3
  * @donate https://boosty.to/greezor
  * @source https://github.com/Greezor/DiscordMemessages
  */
@@ -1049,8 +1049,10 @@ module.exports = class Memessages {
 						if( this.settings[setting.prop] ){
 							const sound = getRandomSound();
 							
-							if( sound )
+							if( sound ){
+								this.stopAudio(sound);
 								this.playAudio(sound);
+							}
 						}
 					});
 					break;
@@ -1103,8 +1105,10 @@ module.exports = class Memessages {
 						if( this.settings[setting.prop] != value ){
 							const sound = getRandomSound();
 							
-							if( sound )
+							if( sound ){
+								this.stopAudio(sound);
 								this.playAudio(sound);
+							}
 						}
 
 						value = this.settings[setting.prop];
@@ -1118,8 +1122,10 @@ module.exports = class Memessages {
 
 						const sound = getRandomSound();
 
-						if( sound )
+						if( sound ){
+							this.stopAudio(sound);
 							this.playAudio(sound);
+						}
 					});
 					break;
 
@@ -1151,8 +1157,10 @@ module.exports = class Memessages {
 						if( this.settings[setting.prop] ){
 							const sound = getRandomSound();
 							
-							if( sound )
+							if( sound ){
+								this.stopAudio(sound);
 								this.playAudio(sound);
+							}
 						}
 					});
 					break;
