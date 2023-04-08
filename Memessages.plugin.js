@@ -3,7 +3,7 @@
  * @author Greezor
  * @authorId 382062281623863298
  * @description Plays sound memes when receiving messages
- * @version 0.9.1
+ * @version 0.9.2
  * @donate https://boosty.to/greezor
  * @source https://github.com/Greezor/DiscordMemessages
  */
@@ -26,7 +26,34 @@ module.exports = class Memessages {
 
 		this.getMemeIcon = this.createShuffleCycle(
 			this.memeIcons
+				.map(url => {
+					new Image(url);
+					return url;
+				})
 		);
+	}
+
+	get memeIcons()
+	{
+		return [
+			'https://img.icons8.com/fluency/96/null/doge.png',
+			'https://img.icons8.com/color/96/null/not-bad-meme.png',
+			'https://img.icons8.com/officel/80/null/scared-face-meme.png',
+			'https://img.icons8.com/fluency/96/null/trollface.png',
+			'https://img.icons8.com/color/96/null/feels-guy.png',
+			'https://img.icons8.com/fluency/96/null/lul.png',
+			'https://img.icons8.com/fluency/96/null/monkas.png',
+			'https://img.icons8.com/fluency/96/null/pogchamp.png',
+			'https://img.icons8.com/fluency/96/null/gachi.png',
+			'https://img.icons8.com/fluency/96/null/angry-face-meme.png',
+			'https://img.icons8.com/color-glass/96/null/salt-bae.png',
+			'https://img.icons8.com/color/96/null/ugandan-knuckles.png',
+		];
+	}
+
+	get memeIcon()
+	{
+		return this.getMemeIcon();
 	}
 
 	get settings()
@@ -208,29 +235,6 @@ module.exports = class Memessages {
 		});
 	}
 
-	get memeIcons()
-	{
-		return [
-			'https://img.icons8.com/fluency/96/null/doge.png',
-			'https://img.icons8.com/color/96/null/not-bad-meme.png',
-			'https://img.icons8.com/officel/80/null/scared-face-meme.png',
-			'https://img.icons8.com/fluency/96/null/trollface.png',
-			'https://img.icons8.com/color/96/null/feels-guy.png',
-			'https://img.icons8.com/fluency/96/null/lul.png',
-			'https://img.icons8.com/fluency/96/null/monkas.png',
-			'https://img.icons8.com/fluency/96/null/pogchamp.png',
-			'https://img.icons8.com/fluency/96/null/gachi.png',
-			'https://img.icons8.com/fluency/96/null/angry-face-meme.png',
-			'https://img.icons8.com/color-glass/96/null/salt-bae.png',
-			'https://img.icons8.com/color/96/null/ugandan-knuckles.png',
-		];
-	}
-
-	get memeIcon()
-	{
-		return this.getMemeIcon();
-	}
-
 	async onMessage({ message, optimistic })
 	{
 		if(
@@ -366,12 +370,16 @@ module.exports = class Memessages {
 		if( !text )
 			return null;
 
+		const lang = modificators.lang ?? (
+			text.match(/[а-яё]/i)
+				? 'ru'
+				: 'en'
+		);
+
 		const getPage = async (page = 1) => {
 			const json = await this.fetch({
 				url: `https://api.meowpad.me/v2/sounds/search?q=${ encodeURIComponent(text) }&page=${ page }`,
-				headers: {
-					'accept-language': modificators.lang ?? 'ru,en',
-				},
+				headers: { 'accept-language': lang },
 			});
 
 			return JSON.parse(json);
@@ -498,7 +506,7 @@ module.exports = class Memessages {
 
 			this.$.on(audio, 'timeupdate', () => {
 				this.$.css(progressBar, {
-					'--value': audio.currentTime / audio.duration,
+					'--value': audio.currentTime / audio.duration || 0,
 				});
 			});
 
@@ -647,7 +655,7 @@ module.exports = class Memessages {
 			.forEach(overLimit => overLimit.remove());
 	}
 
-	render()
+	async render()
 	{
 		const muteBtnLabelMute = this.isLangRU ? 'Отключить звук' : 'Mute';
 		const muteBtnLabelUnmute = this.isLangRU ? 'Включить звук' : 'Unmute';
@@ -1014,7 +1022,10 @@ module.exports = class Memessages {
 			sidebarSettings.append(group);
 
 			const getRandomSound = this.createShuffleCycle(
-				setting?.sounds ?? []
+				await Promise.all(
+					( setting?.sounds ?? [] )
+						.map(url => this.createAudio(url, null, null, {}, false, false))
+				)
 			);
 
 			switch(setting.type){
@@ -1039,7 +1050,7 @@ module.exports = class Memessages {
 							const sound = getRandomSound();
 							
 							if( sound )
-								this.createAudio(sound);
+								this.playAudio(sound);
 						}
 					});
 					break;
@@ -1093,7 +1104,7 @@ module.exports = class Memessages {
 							const sound = getRandomSound();
 							
 							if( sound )
-								this.createAudio(sound);
+								this.playAudio(sound);
 						}
 
 						value = this.settings[setting.prop];
@@ -1108,7 +1119,7 @@ module.exports = class Memessages {
 						const sound = getRandomSound();
 
 						if( sound )
-							this.createAudio(sound);
+							this.playAudio(sound);
 					});
 					break;
 
@@ -1141,7 +1152,7 @@ module.exports = class Memessages {
 							const sound = getRandomSound();
 							
 							if( sound )
-								this.createAudio(sound);
+								this.playAudio(sound);
 						}
 					});
 					break;
@@ -1617,6 +1628,7 @@ module.exports = class Memessages {
 				top: 0;
 				left: 0;
 				width: calc(var(--value) * 100%);
+				max-width: 100%;
 				height: 100%;
 				background: var(--mm--accent);
 				border-radius: 100px;
