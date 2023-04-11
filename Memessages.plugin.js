@@ -3,7 +3,7 @@
  * @author Greezor
  * @authorId 382062281623863298
  * @description Plays sound memes when receiving messages
- * @version 0.10.0
+ * @version 0.10.1
  * @donate https://boosty.to/greezor
  * @source https://github.com/Greezor/DiscordMemessages
  */
@@ -1248,7 +1248,7 @@ module.exports = class Memessages {
 	{
 		const code = await this.fetch('https://raw.githubusercontent.com/Greezor/DiscordMemessages/master/Memessages.plugin.js');
 
-		const [ , newMajor, newMinor, newPatch ] = code.match(/@version (\d)\.(\d)\.(\d)/);
+		const [ , newMajor, newMinor, newPatch ] = code.match(/@version (\d+)\.(\d+)\.(\d+)/);
 		const [ major, minor, patch ] = this.meta.version.split('.');
 
 		if(
