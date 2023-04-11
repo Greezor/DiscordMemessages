@@ -3,7 +3,7 @@
  * @author Greezor
  * @authorId 382062281623863298
  * @description Plays sound memes when receiving messages
- * @version 0.9.3
+ * @version 0.10.0
  * @donate https://boosty.to/greezor
  * @source https://github.com/Greezor/DiscordMemessages
  */
@@ -18,6 +18,7 @@ module.exports = class Memessages {
 		this.lastMessageID = null;
 		this.audioQueue = new Set();
 		this.sidebar = false;
+		this.sidebarPinned = false;
 		this.refs = {};
 
 		this._settings = null;
@@ -805,8 +806,13 @@ module.exports = class Memessages {
 		sidebarBtn.append(sidebarBtnImg);
 
 		this.$.on(sidebarBtn, 'click', () => {
-			this.sidebar = true;
-			sidebar.classList.add('open');
+			this.sidebar = !this.sidebar;
+			
+			if( this.sidebar ){
+				sidebar.classList.add('open');
+			}else{
+				sidebar.classList.remove('open');
+			}
 
 			sidebarBtnImg.setAttribute('src', this.memeIcon);
 		});
@@ -815,27 +821,88 @@ module.exports = class Memessages {
 
 
 
+		const sidebarUnpinBtn = this.$.el('div', {
+			class: 'memessages--toolbar-btn hide',
+			['data-memessages-tooltip']: true,
+		});
+
+		this.$.css(sidebarUnpinBtn, {
+			'--text': `'${ this.isLangRU ? 'Открепить' : 'Unpin' }'`,
+			'--offset': 'calc(-100% + 30px)',
+		});
+
+		const sidebarUnpinBtnIcon = this.$.el('i', { class: 'fa-solid fa-thumbtack' });
+		sidebarUnpinBtn.append(sidebarUnpinBtnIcon);
+
+		const sidebarUnpinBtnImg = this.$.el('img', { src: this.memeIcon });
+		sidebarUnpinBtn.append(sidebarUnpinBtnImg);
+
+		this.$.on(sidebarUnpinBtn, 'click', () => {
+			this.sidebarPinned = !this.sidebarPinned;
+			
+			if( this.sidebarPinned ){
+				sidebar.classList.add('pin');
+				sidebarBtn.classList.add('hide');
+				sidebarUnpinBtn.classList.remove('hide');
+
+				this.$.css(
+					this.$.find('[class^="base"]'),
+					{ 'border-top-right-radius': '8px' },
+				);
+			}else{
+				sidebar.classList.remove('pin');
+				sidebarBtn.classList.remove('hide');
+				sidebarUnpinBtn.classList.add('hide');
+
+				this.$.css(
+					this.$.find('[class^="base"]'),
+					{ 'border-top-right-radius': '' },
+				);
+			}
+
+			sidebarUnpinBtnImg.setAttribute('src', this.memeIcon);
+		});
+
+		this.$.mount(sidebarUnpinBtn, '[class^="toolbar"]');
+
+
+
 		const sidebar = this.$.el('div', { class: 'memessages--sidebar' });
 		const sidebarScrollbox = this.$.el('div', { class: 'memessages--sidebar--scrollbox' });
 		const sidebarSettings = this.$.el('div', { class: 'memessages--sidebar--card sticky' });
-		const sidebarCloseBtn = this.$.el('i', { class: 'memessages--sidebar--close fa-solid fa-angle-right' });
+		const sidebarCloseBtn = this.$.el('i', { class: 'memessages--sidebar--close memessages--sidebar--floating-btn fa-solid fa-angle-right' });
+		const sidebarPinBtn = this.$.el('i', { class: 'memessages--sidebar--pin memessages--sidebar--floating-btn fa-solid fa-thumbtack' });
 		const history = this.$.el('div', { class: 'memessages--sidebar--history' });
 		this.refs.history = history;
 		sidebarScrollbox.append(sidebarSettings);
 		sidebarScrollbox.append(history);
 		sidebar.append(sidebarScrollbox);
 		sidebar.append(sidebarCloseBtn);
+		sidebar.append(sidebarPinBtn);
 
 		this.$.on(sidebarCloseBtn, 'click', () => {
 			this.sidebar = false;
 			sidebar.classList.remove('open');
 		});
 
+		this.$.on(sidebarPinBtn, 'click', () => {
+			this.sidebarPinned = true;
+
+			sidebar.classList.add('pin');
+			sidebarBtn.classList.add('hide');
+			sidebarUnpinBtn.classList.remove('hide');
+
+			this.$.css(
+				this.$.find('[class^="base"]'),
+				{ 'border-top-right-radius': '8px' },
+			);
+		});
+
 		this.$.on(sidebarScrollbox, 'scroll', () => {
 			if( sidebarScrollbox.scrollTop > 20 )
-				sidebarSettings.classList.add('shadow');
+				sidebarSettings.classList.add('stuck');
 			else
-				sidebarSettings.classList.remove('shadow');
+				sidebarSettings.classList.remove('stuck');
 		});
 
 		const settingsList = [
@@ -1022,10 +1089,8 @@ module.exports = class Memessages {
 			sidebarSettings.append(group);
 
 			const getRandomSound = this.createShuffleCycle(
-				await Promise.all(
-					( setting?.sounds ?? [] )
-						.map(url => this.createAudio(url, null, null, {}, false, false))
-				)
+				( setting?.sounds ?? [] )
+					.map(url => this.createAudio(url, null, null, {}, false, false))
 			);
 
 			switch(setting.type){
@@ -1036,7 +1101,7 @@ module.exports = class Memessages {
 					if( this.settings[setting.prop] )
 						toggle.classList.add('on');
 
-					this.$.on(toggle, 'click', () => {
+					this.$.on(toggle, 'click', async () => {
 						toggle.classList.toggle('on');
 
 						this.settings = {
@@ -1047,7 +1112,7 @@ module.exports = class Memessages {
 						setting?.action?.(this.settings[setting.prop]);
 
 						if( this.settings[setting.prop] ){
-							const sound = getRandomSound();
+							const sound = await getRandomSound();
 							
 							if( sound ){
 								this.stopAudio(sound);
@@ -1095,7 +1160,7 @@ module.exports = class Memessages {
 
 					this.$.on(document, 'mousemove', onChange);
 
-					this.$.on(document, 'mouseup', e => {
+					this.$.on(document, 'mouseup', async e => {
 						if( !enabled ) return;
 						
 						enabled = false;
@@ -1103,7 +1168,7 @@ module.exports = class Memessages {
 						setting?.action?.(this.settings[setting.prop]);
 
 						if( this.settings[setting.prop] != value ){
-							const sound = getRandomSound();
+							const sound = await getRandomSound();
 							
 							if( sound ){
 								this.stopAudio(sound);
@@ -1117,10 +1182,10 @@ module.exports = class Memessages {
 				
 				case 'button':
 					group.classList.add('clickable');
-					this.$.on(group, 'click', () => {
+					this.$.on(group, 'click', async () => {
 						setting?.action?.(this.settings[setting.prop]);
 
-						const sound = getRandomSound();
+						const sound = await getRandomSound();
 
 						if( sound ){
 							this.stopAudio(sound);
@@ -1142,7 +1207,7 @@ module.exports = class Memessages {
 					this.$.on(input, 'keydown', e => e.stopPropagation());
 					this.$.on(input, 'keyup', e => e.stopPropagation());
 
-					this.$.on(input, 'input', e => {
+					this.$.on(input, 'input', async e => {
 						e.stopPropagation();
 
 						this.settings = {
@@ -1155,7 +1220,7 @@ module.exports = class Memessages {
 						input.value = this.settings[setting.prop];
 
 						if( this.settings[setting.prop] ){
-							const sound = getRandomSound();
+							const sound = await getRandomSound();
 							
 							if( sound ){
 								this.stopAudio(sound);
@@ -1167,7 +1232,7 @@ module.exports = class Memessages {
 			}
 		}
 
-		this.$.mount(sidebar, '[class^="app-"]');
+		this.$.mount(sidebar, '[class^="container"]');
 	}
 
 	onDestroy(after)
@@ -1385,16 +1450,16 @@ module.exports = class Memessages {
 				opacity: 1;
 			}
 
+			.memessages--toolbar-btn.hide{
+				display: none;
+			}
+
 			.memessages--channel-btn{
 				z-index: 2;
 			}
 
 			.memessages--channel-btn img{
 				pointer-events: none;
-			}
-
-			.memessages--channel-btn.hide{
-				display: none;
 			}
 
 			.memessages--channel-btn .memessages--channel-btn--icon-on{
@@ -1432,20 +1497,25 @@ module.exports = class Memessages {
 			}
 
 			.memessages--sidebar{
+				position: relative;
+				flex: 0 0 0px;
+				transition: all 0.3s ease;
+				z-index: 999;
+			}
+
+			.memessages--sidebar:before{
+				content: '';
 				position: absolute;
 				top: 0;
 				right: 0;
 				bottom: 0;
 				width: 500px;
 				background: linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 0.5) 100%);
-				background-repeat: no-repeat;
-				background-position: 500px 0;
+				transition: all 0.3s ease;
 				transform: translateX(100%);
-				transition: all 0.3s ease,
-							background-position 0.3s ease 0.15s;
 				visibility: hidden;
 				pointer-events: none;
-				z-index: 999;
+				z-index: -2;
 			}
 
 			.memessages--sidebar--scrollbox{
@@ -1458,7 +1528,9 @@ module.exports = class Memessages {
 				overflow-x: hidden;
 				overflow-y: auto;
 				box-sizing: border-box;
-				pointer-events: auto;
+				transition: all 0.3s ease;
+				transform: translateX(100%);
+				visibility: hidden;
 			}
 
 			.memessages--sidebar--scrollbox::-webkit-scrollbar{
@@ -1466,24 +1538,95 @@ module.exports = class Memessages {
 			}
 
 			.memessages--sidebar--scrollbox::-webkit-scrollbar-track{
-				background: var(--mm-color--black);
+				background: transparent;
 			}
 
 			.memessages--sidebar--scrollbox::-webkit-scrollbar-thumb{
-				background: var(--mm--accent);
+				background: rgba(180, 180, 180, 0.6);
 				border-radius: 100px;
 			}
 
-			.memessages--sidebar.open{
+			.memessages--sidebar--floating-btn{
+				position: absolute;
+				top: 0;
+				right: 360px;
+				display: flex;
+				justify-content: center;
+				align-items: center;
+				width: 50px;
+				height: 50px;
+				background: var(--mm--bg);
+				border-radius: 50%;
+				font-size: 22px;
+				color: var(--mm--text);
+				transition: all 0.3s ease,
+							background 0.2s ease,
+							color 0.2s ease;
+				transform: translateX(430px);
+				visibility: hidden;
+				box-shadow: 0 2px 5px 1px rgba(0, 0, 0, 0.3);
+				pointer-events: auto;
+				cursor: pointer;
+				z-index: -1;
+			}
+
+			.memessages--sidebar--floating-btn:hover{
+				background: var(--mm--accent);
+				color: var(--mm-color--white);
+			}
+
+			.memessages--sidebar--close{
+				top: 15px;
+			}
+
+			.memessages--sidebar--pin{
+				top: 75px;
+			}
+
+			.memessages--sidebar.open:before{
+				transition-delay: 0.15s;
 				transform: none;
 				visibility: visible;
-				background-position: 0 0;
+			}
+
+			.memessages--sidebar.open .memessages--sidebar--scrollbox{
+				transform: none;
+				visibility: visible;
+			}
+
+			.memessages--sidebar.open .memessages--sidebar--floating-btn{
+				transform: none;
+				visibility: visible;
+				transition: all 0.6s ease,
+							background 0.2s ease,
+							color 0.2s ease;
+			}
+
+			.memessages--sidebar.pin{
+				flex: 0 0 360px;
+			}
+
+			.memessages--sidebar.pin:before{
+				transition-delay: 0s;
+				transform: translateX(100%);
+				visibility: hidden;
+			}
+
+			.memessages--sidebar.pin .memessages--sidebar--scrollbox{
+				transform: none;
+				visibility: visible;
+			}
+
+			.memessages--sidebar.pin .memessages--sidebar--floating-btn{
+				transition: all 0.3s ease;
+				transform: translateX(70px);
+				visibility: visible;
 			}
 
 			.memessages--sidebar--card{
 				display: flex;
 				flex-direction: column;
-				margin-bottom: 20px;
+				margin-bottom: 10px;
 				padding: 20px;
 				gap: 20px;
 				background: var(--mm--bg);
@@ -1500,20 +1643,22 @@ module.exports = class Memessages {
 
 			.memessages--sidebar--card.sticky{
 				position: sticky;
-				top: 0px;
+				top: -10px;
 				z-index: 999;
 				box-shadow: inset 0 -1px 0 1px rgba(0, 0, 0, 0.1),
 							inset 103px 0 0 -100px var(--mm--accent),
 							0 0 0 0 rgba(0, 0, 0, 0.3);
 			}
 
-			.memessages--sidebar--card.shadow{
+			.memessages--sidebar--card.stuck{
 				box-shadow: inset 0 -1px 0 1px rgba(0, 0, 0, 0.1),
 							inset 0 0 0 -100px var(--mm--accent),
 							0 2px 5px 1px rgba(0, 0, 0, 0.3);
 			}
 
-			.memessages--sidebar--card.sticky.shadow{
+			.memessages--sidebar--card.sticky.stuck{
+				border-top-left-radius: 0;
+				border-top-right-radius: 0;
 				box-shadow: inset 0 -1px 0 1px rgba(0, 0, 0, 0.1),
 							inset 103px 0 0 -100px var(--mm--accent),
 							0 2px 5px 1px rgba(0, 0, 0, 0.3);
@@ -1524,45 +1669,8 @@ module.exports = class Memessages {
 				width: 100%;
 			}
 
-			.memessages--sidebar--close{
-				position: absolute;
-				top: 15px;
-				right: 370px;
-				display: flex;
-				justify-content: center;
-				align-items: center;
-				width: 50px;
-				height: 50px;
-				background: var(--mm-color--white);
-				border-radius: 50%;
-				font-size: 25px;
-				color: var(--mm-color--gray);
-				transition: all 0.2s ease;
-				box-shadow: 0 2px 5px 1px rgba(0, 0, 0, 0.3);
-				pointer-events: auto;
-				cursor: pointer;
-			}
-
-			.memessages--sidebar--close:hover{
-				background: var(--mm--accent);
-				color: var(--mm-color--white);
-			}
-
-			.memessages--sidebar.open .memessages--sidebar--close{
-				animation: memessages--show-close-btn 0.3s ease 0.3s both;
-			}
-
-			@keyframes memessages--show-close-btn{
-				0%{
-					transform: translateX(100px);
-				}
-
-				100%{
-					transform: none;
-				}
-			}
-
 			.memessages--sidebar--history{
+				padding-bottom: 15px;
 				display: flex;
 				flex-direction: column;
 				word-break: break-all;
