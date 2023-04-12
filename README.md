@@ -10,7 +10,7 @@ Plays sound memes when receiving messages
 
 ## Installation
 - Download and install [BetterDiscord](https://betterdiscord.app/)
-- Download plugin `Memessages.plugin.js`
+- Download plugin [Memessages.plugin.js](https://raw.githubusercontent.com/Greezor/DiscordMemessages/master/Memessages.plugin.js)
 - Install plugin: [Guide](https://docs.betterdiscord.app/users/guides/installing-addons)
 
 ## Screenshot

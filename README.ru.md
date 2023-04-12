@@ -10,7 +10,7 @@ ___
 
 ## Установка
 - Скачать и установить [BetterDiscord](https://betterdiscord.app/)
-- Скачать плагин `Memessages.plugin.js`
+- Скачать плагин [Memessages.plugin.js](https://raw.githubusercontent.com/Greezor/DiscordMemessages/master/Memessages.plugin.js)
 - Установить плагин: [Гайд](https://docs.betterdiscord.app/users/guides/installing-addons)
 
 ## Скриншот
