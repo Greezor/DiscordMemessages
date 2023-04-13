@@ -8,7 +8,8 @@
  * @source https://github.com/Greezor/DiscordMemessages
  */
 
-module.exports = class Memessages {
+module.exports = class Memessages
+{
 
 	constructor(meta)
 	{
@@ -223,15 +224,15 @@ module.exports = class Memessages {
 
 	fetch(options)
 	{
-		return new Promise((resolve, reject) => {
+		return new Promise(resolve => {
 			require('request')(options, (error, response, data) => {
 				if( error )
-					return reject(new Error(error));
+					throw new Error(error);
 
 				if( response.statusCode != 200 )
-					return reject(new Error(response.statusCode));
+					throw new Error(response.statusCode);
 
-				return resolve(data);
+				resolve(data);
 			});
 		});
 	}
@@ -503,7 +504,7 @@ module.exports = class Memessages {
 
 			this.$.on(audio, 'timeupdate', () => {
 				this.$.css(progressBar, {
-					'--value': audio.currentTime / audio.duration || 0,
+					'--value': audio.paused ? 0 : audio.currentTime / audio.duration || 0,
 				});
 			});
 
