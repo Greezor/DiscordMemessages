@@ -371,7 +371,11 @@ module.exports = class Memessages {
 		if( !text )
 			return null;
 
-		const lang = modificators.lang ?? 'ru';
+		const lang = modificators.lang ?? (
+			text.match(/[а-яё]/i)
+				? 'ru'
+				: 'en'
+		);
 
 		const getPage = async (page = 1) => {
 			const json = await this.fetch({
