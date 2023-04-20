@@ -3,7 +3,7 @@
  * @author Greezor
  * @authorId 382062281623863298
  * @description Plays sound memes when receiving messages
- * @version 0.10.3
+ * @version 0.10.4
  * @donate https://boosty.to/greezor
  * @source https://github.com/Greezor/DiscordMemessages
  */
@@ -152,7 +152,7 @@ module.exports = class Memessages
 			}
 		};
 
-		const mount = (el, selector, firstMount = true) => {
+		const mount = (el, selector, method = 'append', firstMount = true) => {
 			if( !el ) return;
 
 			const parent = find(selector);
@@ -160,17 +160,17 @@ module.exports = class Memessages
 			if( !parent ){
 				if( !firstMount )
 					on(document, 'click', () => {
-						setTimeout(() => mount(el, selector, false), 100);
+						setTimeout(() => mount(el, selector, method, false), 100);
 					}, { capture: true, once: true });
 
 				return;
 			}
 
-			parent.append(el);
+			parent?.[method]?.(el);
 
 			BdApi.DOM.onRemoved(el, () => {
 				if( this.pluginEnabled )
-					mount(el, selector, false);
+					mount(el, selector, method, false);
 			});
 
 			if( firstMount )
@@ -226,11 +226,14 @@ module.exports = class Memessages
 	{
 		return new Promise(resolve => {
 			require('request')(options, (error, response, data) => {
-				if( error )
-					throw new Error(error);
+				if( error || response.statusCode != 200 ){
+					BdApi.UI.showToast(`${ this.isLangRU ? 'Ошибка' : 'Error' }: ${ error.message || response.statusCode }`, {
+						type: 'danger',
+						timeout: 3000,
+					});
 
-				if( response.statusCode != 200 )
-					throw new Error(response.statusCode);
+					throw new Error(error || response.statusCode);
+				}
 
 				resolve(data);
 			});
@@ -381,6 +384,8 @@ module.exports = class Memessages
 		const languages = ['en', 'ru']
 			.sort(l => l == lang ? -1 : 0);
 
+		let offset = modificators.soundIndex ?? 0;
+
 		for(let language of languages){
 			const getPage = async (page = 1) => {
 				const json = await this.fetch({
@@ -396,8 +401,7 @@ module.exports = class Memessages
 			if( !page.sounds.length )
 				continue;
 	
-			let offset = modificators.soundIndex ?? 0;
-			let pageIndex = Math.min( page.meta.totalPages - 1, Math.floor(offset / page.sounds.length) );
+			let pageIndex = Math.floor(offset / page.sounds.length);
 			let soundIndex = offset % page.sounds.length;
 	
 			if( pageIndex > 0 )
@@ -407,6 +411,8 @@ module.exports = class Memessages
 
 			if( soundMeta )
 				return soundMeta;
+
+			offset -= page.meta.totalResults;
 		}
 
 		return null;
@@ -523,7 +529,6 @@ module.exports = class Memessages
 
 			audio.ui = {
 				card,
-				player,
 				playBtn,
 				progressBar,
 			};
@@ -1516,7 +1521,7 @@ module.exports = class Memessages
 				top: 0;
 				right: 0;
 				bottom: 0;
-				width: 500px;
+				width: 520px;
 				background: linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 0.5) 100%);
 				transition: all 0.3s ease;
 				transform: translateX(100%);
@@ -1527,13 +1532,14 @@ module.exports = class Memessages
 
 			.memessages--sidebar--scrollbox{
 				position: absolute;
-				padding: 10px;
+				padding: 15px;
+				padding-right: 5px;
 				top: 0;
 				right: 0;
-				width: 360px;
+				width: 380px;
 				max-height: 100%;
 				overflow-x: hidden;
-				overflow-y: auto;
+				overflow-y: scroll;
 				box-sizing: border-box;
 				transition: all 0.3s ease;
 				transform: translateX(100%);
@@ -1541,7 +1547,7 @@ module.exports = class Memessages
 			}
 
 			.memessages--sidebar--scrollbox::-webkit-scrollbar{
-				width: 5px;
+				width: 10px;
 			}
 
 			.memessages--sidebar--scrollbox::-webkit-scrollbar-track{
@@ -1549,23 +1555,25 @@ module.exports = class Memessages
 			}
 
 			.memessages--sidebar--scrollbox::-webkit-scrollbar-thumb{
-				background: rgba(180, 180, 180, 0.6);
+				background: var(--mm--bg-negative);
+				border: 3px solid transparent;
 				border-radius: 100px;
+				background-clip: padding-box;
 			}
 
 			.memessages--sidebar--floating-btn{
 				position: absolute;
 				top: 0;
-				right: 360px;
+				right: 380px;
 				display: flex;
 				justify-content: center;
 				align-items: center;
 				width: 50px;
 				height: 50px;
-				background: var(--mm--bg);
+				background: var(--mm-color--white);
 				border-radius: 50%;
 				font-size: 22px;
-				color: var(--mm--text);
+				color: var(--mm-color--gray);
 				transition: all 0.3s ease,
 							background 0.2s ease,
 							color 0.2s ease;
@@ -1583,11 +1591,11 @@ module.exports = class Memessages
 			}
 
 			.memessages--sidebar--close{
-				top: 15px;
+				top: 20px;
 			}
 
 			.memessages--sidebar--pin{
-				top: 75px;
+				top: 80px;
 			}
 
 			.memessages--sidebar.open:before{
@@ -1610,7 +1618,7 @@ module.exports = class Memessages
 			}
 
 			.memessages--sidebar.pin{
-				flex: 0 0 360px;
+				flex: 0 0 380px;
 			}
 
 			.memessages--sidebar.pin:before{
@@ -1633,7 +1641,7 @@ module.exports = class Memessages
 			.memessages--sidebar--card{
 				display: flex;
 				flex-direction: column;
-				margin-bottom: 10px;
+				margin-bottom: 15px;
 				padding: 20px;
 				gap: 20px;
 				background: var(--mm--bg);
@@ -1650,7 +1658,7 @@ module.exports = class Memessages
 
 			.memessages--sidebar--card.sticky{
 				position: sticky;
-				top: -10px;
+				top: -15px;
 				z-index: 999;
 				box-shadow: inset 0 -1px 0 1px rgba(0, 0, 0, 0.1),
 							inset 103px 0 0 -100px var(--mm--accent),
@@ -1677,7 +1685,6 @@ module.exports = class Memessages
 			}
 
 			.memessages--sidebar--history{
-				padding-bottom: 15px;
 				display: flex;
 				flex-direction: column;
 				word-break: break-all;
