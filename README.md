@@ -28,8 +28,8 @@ Plays sound memes when receiving messages
 - [x] Chaos mode!
 - [x] Auto-update
 - [x] Sound Modificators
+- [x] Cooldown mode
 - [ ] Hotkeys
-- [ ] Cooldown mode
 
 ### Modificators
 
