@@ -3,7 +3,7 @@
  * @author Greezor
  * @authorId 382062281623863298
  * @description Plays sound memes when receiving messages
- * @version 0.12.0
+ * @version 0.12.1
  * @donate https://boosty.to/greezor
  * @source https://github.com/Greezor/DiscordMemessages
  */
@@ -488,10 +488,6 @@ module.exports = class Memessages
 	{
 		const audio = new Audio();
 
-		audio.memeURL = url;
-		audio.memessage = message;
-		audio.ui = {};
-
 		const ctx = new AudioContext();
 		const source = ctx.createMediaElementSource(audio);
 
@@ -530,6 +526,9 @@ module.exports = class Memessages
 		compressor.ratio.value = 20;
 		compressor.attack.value = 0;
 
+		audio.memeURL = url;
+		audio.memessage = message;
+		audio.ui = {};
 		audio.effects = {
 			echo: {
 				delay: echoDelay,
@@ -702,6 +701,9 @@ module.exports = class Memessages
 			if( audio.src != url ){
 				audio.src = url;
 				audio.load();
+			}else{
+				this.$.off(audio, 'canplaythrough');
+				resolve();
 			}
 		});
 
@@ -735,16 +737,34 @@ module.exports = class Memessages
 		audio.volume = this.settings.volume;
 		audio.effects.compressor.threshold.value = (this.settings.limiter - 1) * 100;
 
+		audio?.ui?.playBtn?.classList?.remove?.('fa-play');
+		audio?.ui?.playBtn?.classList?.add?.('fa-circle-notch');
+		audio?.ui?.playBtn?.classList?.add?.('fa-spin');
+
+		this.$.css(audio?.ui?.playBtn, {
+			'pointer-events': 'none',
+		});
+
 		await new Promise(resolve => {
 			(function play(){
 				audio.play()
-					.then(resolve)
+					.then(() => {
+						if( audio.paused )
+							play();
+						else
+							resolve();
+					})
 					.catch(play);
 			})()
 		});
 
 		audio?.ui?.playBtn?.classList?.add?.('fa-stop');
-		audio?.ui?.playBtn?.classList?.remove?.('fa-play');
+		audio?.ui?.playBtn?.classList?.remove?.('fa-circle-notch');
+		audio?.ui?.playBtn?.classList?.remove?.('fa-spin');
+
+		this.$.css(audio?.ui?.playBtn, {
+			'pointer-events': '',
+		});
 	}
 
 	stopAudio(audio)
@@ -792,7 +812,7 @@ module.exports = class Memessages
 
 		this.$.css(muteBtn, {
 			'--text': `'${ muteBtnLabelMute }'`,
-			'--offset': 'calc(-100% + 50px)',
+			'--offset': 'calc(-100% + 28px)',
 			'--ws': 'nowrap',
 		});
 
@@ -1107,13 +1127,16 @@ module.exports = class Memessages
 						this.isLangRU
 							? [
 								'https://api.meowpad.me/v2/sounds/preview/35004.m4a',
+								'https://api.meowpad.me/v2/sounds/preview/3944.m4a',
 							]
 							: []
 					),
 					'https://api.meowpad.me/v2/sounds/preview/10541.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/498.m4a',
 				],
 				prop: 'cooldownMode',
 				title: this.isLangRU ? 'Режим Кулдауна' : 'Cooldown Mode',
+				desc: this.isLangRU ? 'Пользователи не смогут спамить' : 'Users will not be able to spam',
 				icon: 'fa-solid fa-stopwatch',
 				action: () => {
 					this.cooldowns.clear();
@@ -1189,22 +1212,7 @@ module.exports = class Memessages
 							)
 					), {
 						confirmText: 'OK',
-						cancelText: this.isLangRU ? 'Проверить обновления' : 'Check for updates',
-						onCancel: () => {
-							BdApi.UI.showToast(this.isLangRU ? 'Поиск обновлений...' : 'Search for updates...', {
-								type: 'info',
-								timeout: 3000,
-							});
-
-							setTimeout(async () => {
-								await this.autoUpdate();
-
-								BdApi.UI.showToast(this.isLangRU ? 'Установлена последняя версия' : 'Latest version installed', {
-									type: 'success',
-									timeout: 3000,
-								});
-							}, 1000);
-						},
+						cancelText: null,
 					});
 				},
 			},
@@ -1650,41 +1658,6 @@ module.exports = class Memessages
 			before();
 			after();
 		};
-	}
-	
-	async autoUpdate()
-	{
-		const code = await this.fetch('https://raw.githubusercontent.com/Greezor/DiscordMemessages/master/Memessages.plugin.js');
-
-		const [ , newMajor, newMinor, newPatch ] = code.match(/@version (\d+)\.(\d+)\.(\d+)/);
-		const [ major, minor, patch ] = this.meta.version.split('.');
-
-		if(
-			Number(newMajor) > Number(major)
-			||
-			(
-				Number(newMajor) == Number(major)
-				&&
-				Number(newMinor) > Number(minor)
-			)
-			||
-			(
-				Number(newMajor) == Number(major)
-				&&
-				Number(newMinor) == Number(minor)
-				&&
-				Number(newPatch) > Number(patch)
-			)
-		){
-			require('fs').writeFile(
-				require('path').join(__dirname, this.meta.filename),
-				code,
-				() => BdApi.UI.showNotice(this.isLangRU ? `Плагин "Memessages" обновлён до версии ${ newMajor }.${ newMinor }.${ newPatch }` : `Plugin "Memessages" updated to version ${ newMajor }.${ newMinor }.${ newPatch }`, {
-					type: 'success',
-					timeout: 0,
-				})
-			);
-		}
 	}
 
 	async start()
@@ -2358,8 +2331,6 @@ module.exports = class Memessages
 		`);
 
 		this.render();
-
-		this.updateTimeout = setTimeout(() => this.autoUpdate(), 3000);
 	}
 
 	stop()
