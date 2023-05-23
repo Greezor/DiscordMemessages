@@ -1212,7 +1212,22 @@ module.exports = class Memessages
 							)
 					), {
 						confirmText: 'OK',
-						cancelText: null,
+						cancelText: this.isLangRU ? 'Проверить обновления' : 'Check for updates',
+						onCancel: () => {
+							BdApi.UI.showToast(this.isLangRU ? 'Поиск обновлений...' : 'Search for updates...', {
+								type: 'info',
+								timeout: 3000,
+							});
+
+							setTimeout(async () => {
+								await this.autoUpdate();
+
+								BdApi.UI.showToast(this.isLangRU ? 'Установлена последняя версия' : 'Latest version installed', {
+									type: 'success',
+									timeout: 3000,
+								});
+							}, 1000);
+						},
 					});
 				},
 			},
@@ -1658,6 +1673,41 @@ module.exports = class Memessages
 			before();
 			after();
 		};
+	}
+	
+	async autoUpdate()
+	{
+		const code = await this.fetch('https://raw.githubusercontent.com/Greezor/DiscordMemessages/master/Memessages.plugin.js');
+
+		const [ , newMajor, newMinor, newPatch ] = code.match(/@version (\d+)\.(\d+)\.(\d+)/);
+		const [ major, minor, patch ] = this.meta.version.split('.');
+
+		if(
+			Number(newMajor) > Number(major)
+			||
+			(
+				Number(newMajor) == Number(major)
+				&&
+				Number(newMinor) > Number(minor)
+			)
+			||
+			(
+				Number(newMajor) == Number(major)
+				&&
+				Number(newMinor) == Number(minor)
+				&&
+				Number(newPatch) > Number(patch)
+			)
+		){
+			require('fs').writeFile(
+				require('path').join(__dirname, this.meta.filename),
+				code,
+				() => BdApi.UI.showNotice(this.isLangRU ? `Плагин "Memessages" обновлён до версии ${ newMajor }.${ newMinor }.${ newPatch }` : `Plugin "Memessages" updated to version ${ newMajor }.${ newMinor }.${ newPatch }`, {
+					type: 'success',
+					timeout: 0,
+				})
+			);
+		}
 	}
 
 	async start()
@@ -2331,6 +2381,8 @@ module.exports = class Memessages
 		`);
 
 		this.render();
+
+		this.updateTimeout = setTimeout(() => this.autoUpdate(), 3000);
 	}
 
 	stop()
