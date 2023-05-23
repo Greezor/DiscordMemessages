@@ -488,10 +488,6 @@ module.exports = class Memessages
 	{
 		const audio = new Audio();
 
-		audio.memeURL = url;
-		audio.memessage = message;
-		audio.ui = {};
-
 		const ctx = new AudioContext();
 		const source = ctx.createMediaElementSource(audio);
 
@@ -530,6 +526,9 @@ module.exports = class Memessages
 		compressor.ratio.value = 20;
 		compressor.attack.value = 0;
 
+		audio.memeURL = url;
+		audio.memessage = message;
+		audio.ui = {};
 		audio.effects = {
 			echo: {
 				delay: echoDelay,
@@ -702,6 +701,9 @@ module.exports = class Memessages
 			if( audio.src != url ){
 				audio.src = url;
 				audio.load();
+			}else{
+				this.$.off(audio, 'canplaythrough');
+				resolve();
 			}
 		});
 
@@ -735,16 +737,34 @@ module.exports = class Memessages
 		audio.volume = this.settings.volume;
 		audio.effects.compressor.threshold.value = (this.settings.limiter - 1) * 100;
 
+		audio?.ui?.playBtn?.classList?.remove?.('fa-play');
+		audio?.ui?.playBtn?.classList?.add?.('fa-circle-notch');
+		audio?.ui?.playBtn?.classList?.add?.('fa-spin');
+
+		this.$.css(audio?.ui?.playBtn, {
+			'pointer-events': 'none',
+		});
+
 		await new Promise(resolve => {
 			(function play(){
 				audio.play()
-					.then(resolve)
+					.then(() => {
+						if( audio.paused )
+							play();
+						else
+							resolve();
+					})
 					.catch(play);
 			})()
 		});
 
 		audio?.ui?.playBtn?.classList?.add?.('fa-stop');
-		audio?.ui?.playBtn?.classList?.remove?.('fa-play');
+		audio?.ui?.playBtn?.classList?.remove?.('fa-circle-notch');
+		audio?.ui?.playBtn?.classList?.remove?.('fa-spin');
+
+		this.$.css(audio?.ui?.playBtn, {
+			'pointer-events': '',
+		});
 	}
 
 	stopAudio(audio)
@@ -792,7 +812,7 @@ module.exports = class Memessages
 
 		this.$.css(muteBtn, {
 			'--text': `'${ muteBtnLabelMute }'`,
-			'--offset': 'calc(-100% + 50px)',
+			'--offset': 'calc(-100% + 28px)',
 			'--ws': 'nowrap',
 		});
 
@@ -1107,13 +1127,16 @@ module.exports = class Memessages
 						this.isLangRU
 							? [
 								'https://api.meowpad.me/v2/sounds/preview/35004.m4a',
+								'https://api.meowpad.me/v2/sounds/preview/3944.m4a',
 							]
 							: []
 					),
 					'https://api.meowpad.me/v2/sounds/preview/10541.m4a',
+					'https://api.meowpad.me/v2/sounds/preview/498.m4a',
 				],
 				prop: 'cooldownMode',
 				title: this.isLangRU ? 'Режим Кулдауна' : 'Cooldown Mode',
+				desc: this.isLangRU ? 'Пользователи не смогут спамить' : 'Users will not be able to spam',
 				icon: 'fa-solid fa-stopwatch',
 				action: () => {
 					this.cooldowns.clear();
