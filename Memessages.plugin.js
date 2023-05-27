@@ -2306,8 +2306,6 @@ module.exports = class Memessages
 	{
 		this.pluginEnabled = false;
 
-		clearTimeout(this.updateTimeout);
-
 		this.aggregateAudio(audio => (
 			this.stopAudio(audio)
 		));
