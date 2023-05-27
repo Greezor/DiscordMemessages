@@ -2,8 +2,10 @@
  * @name Memessages
  * @author Greezor
  * @authorId 382062281623863298
+ * @authorLink https://betterdiscord.app/developer/Greezor
  * @description Plays sound memes when receiving messages
- * @version 0.12.3
+ * @version 0.12.4
+ * @invite https://discord.gg/ghkfrqqs
  * @donate https://boosty.to/greezor
  * @source https://github.com/Greezor/DiscordMemessages
  */
