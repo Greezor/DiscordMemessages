@@ -1190,9 +1190,9 @@ module.exports = class Memessages
 							)
 					), {
 						confirmText: 'OK',
-						cancelText: this.isLangRU ? 'Проверить обновления' : 'Check for updates',
+						cancelText: isRU ? 'Проверить обновления' : 'Check for updates',
 						onCancel: () => {
-							BdApi.UI.showToast(this.isLangRU ? 'Поиск обновлений...' : 'Search for updates...', {
+							BdApi.UI.showToast(isRU ? 'Поиск обновлений...' : 'Search for updates...', {
 								type: 'info',
 								timeout: 3000,
 							});
@@ -1200,7 +1200,7 @@ module.exports = class Memessages
 							setTimeout(async () => {
 								await this.autoUpdate();
 
-								BdApi.UI.showToast(this.isLangRU ? 'Установлена последняя версия' : 'Latest version installed', {
+								BdApi.UI.showToast(isRU ? 'Установлена последняя версия' : 'Latest version installed', {
 									type: 'success',
 									timeout: 3000,
 								});
@@ -1671,7 +1671,7 @@ module.exports = class Memessages
 			require('fs').writeFile(
 				require('path').join(__dirname, this.meta.filename),
 				code,
-				() => BdApi.UI.showNotice(this.isLangRU ? `Плагин "Memessages" обновлён до версии ${ newMajor }.${ newMinor }.${ newPatch }` : `Plugin "Memessages" updated to version ${ newMajor }.${ newMinor }.${ newPatch }`, {
+				() => BdApi.UI.showNotice(isRU ? `Плагин "Memessages" обновлён до версии ${ newMajor }.${ newMinor }.${ newPatch }` : `Plugin "Memessages" updated to version ${ newMajor }.${ newMinor }.${ newPatch }`, {
 					type: 'success',
 					timeout: 0,
 				})
