@@ -3,7 +3,7 @@
  * @author Greezor
  * @authorId 382062281623863298
  * @description Plays sound memes when receiving messages
- * @version 0.12.2
+ * @version 0.12.3
  * @donate https://boosty.to/greezor
  * @source https://github.com/Greezor/DiscordMemessages
  */
@@ -326,8 +326,8 @@ module.exports = class Memessages
 
 	onMessageEdit({ message })
 	{
-		if( !this.pluginEnabled || !message ) return;
-
+		if( !this.pluginEnabled || !message || !message.content ) return;
+		
 		this.onMessageDelete(message);
 
 		this.lastMessageID = null;
@@ -679,7 +679,6 @@ module.exports = class Memessages
 
 			if( audio.src != url ){
 				audio.src = url;
-				audio.load();
 			}else{
 				$.off(audio, 'canplaythrough');
 				resolve();
