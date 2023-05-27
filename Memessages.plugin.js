@@ -3,10 +3,153 @@
  * @author Greezor
  * @authorId 382062281623863298
  * @description Plays sound memes when receiving messages
- * @version 0.12.1
+ * @version 0.12.3
  * @donate https://boosty.to/greezor
  * @source https://github.com/Greezor/DiscordMemessages
  */
+
+const React = BdApi.Webpack.getModule(m => m.createElement && m.cloneElement);
+
+const Discord = {
+	dispatcher: BdApi.Webpack.getModule(m => m.dispatch && m.subscribe),
+	channelStore: BdApi.Webpack.getModule(m => m.getLastSelectedChannelId),
+	userStore: BdApi.Webpack.getModule(m => m.getCurrentUser && m.getUser),
+	relationshipStore: BdApi.Webpack.getModule(m => m.isBlocked && m.getFriendIDs),
+	navigateTo: BdApi.Webpack.getModule(
+		BdApi.Webpack.Filters.byStrings(`"transitionTo - Transitioning to "`),
+		{ searchExports: true }
+	),
+};
+
+const $ = (() => {
+	const el = (tag, attrs = {}, children = []) => {
+		let elem = document.createElement(tag);
+
+		for(let [ attr, value ] of Object.entries(attrs))
+			elem.setAttribute(attr, value);
+
+		if( Array.isArray(children) )
+			for(let child of children)
+				elem.append( el(...child) );
+		else
+			elem.innerHTML = children;
+
+		return elem;
+	};
+
+	const find = (selector, parent = null) => (parent ?? document).querySelector(selector);
+
+	const findAll = (selector, parent = null) => (parent ?? document).querySelectorAll(selector);
+
+	const eventListeners = [];
+
+	const on = (target, event, listener, options) => {
+		target?.addEventListener(event, listener, options);
+		eventListeners.push({ target, event, listener, options });
+	};
+
+	const off = (target, event) => {
+		for(let [ i, eventListener ] of eventListeners.entries()){
+			if(
+				(
+					!target
+					||
+					eventListener.target === target
+				)
+				&&
+				(
+					!event
+					||
+					eventListener.event === event
+				)
+			){
+				eventListener.target?.removeEventListener(
+					eventListener.event,
+					eventListener.listener,
+					eventListener.options,
+				);
+				
+				eventListeners.splice(i, 1);
+			}
+		}
+	};
+
+	const css = (el, styles = {}) => {
+		if( !el ) return;
+
+		for(let [ prop, value ] of Object.entries(styles))
+			el.style.setProperty(prop, value);
+	};
+
+	const shuffle = (arr) => {
+		let array = [ ...arr ];
+
+		for(let i = array.length - 1; i > 0; i--){
+			let j = Math.floor(Math.random() * (i + 1));
+			[ array[i], array[j] ] = [ array[j], array[i] ];
+		}
+
+		return array;
+	};
+
+	const createShuffleCycle = (array) => {
+		let shuffled = [];
+		let index = 0;
+
+		return () => {
+			if( shuffled[index] )
+				return shuffled[index++];
+
+			index = 1;
+			shuffled = shuffle(array);
+			return shuffled[0];
+		};
+	};
+
+	return {
+		el,
+		find,
+		findAll,
+		on,
+		off,
+		css,
+		shuffle,
+		createShuffleCycle,
+	};
+})();
+
+const defaultSettings = {
+	memeChannels: [],
+	muted: false,
+	volume: 0.5,
+	chaosMode: false,
+	cooldownMode: false,
+
+	limiter: 0.7,
+	cooldown: [ 10, 1000 ],
+	settingsSounds: true,
+	useThemeColors: false,
+	history: true,
+	historyLimit: 100,
+	soundsLimit: 100,
+};
+
+const memeIcons = [
+	'https://img.icons8.com/fluency/96/null/doge.png',
+	'https://img.icons8.com/color/96/null/not-bad-meme.png',
+	'https://img.icons8.com/officel/80/null/scared-face-meme.png',
+	'https://img.icons8.com/fluency/96/null/trollface.png',
+	'https://img.icons8.com/color/96/null/feels-guy.png',
+	'https://img.icons8.com/fluency/96/null/lul.png',
+	'https://img.icons8.com/fluency/96/null/monkas.png',
+	'https://img.icons8.com/fluency/96/null/pogchamp.png',
+	'https://img.icons8.com/fluency/96/null/gachi.png',
+	'https://img.icons8.com/fluency/96/null/angry-face-meme.png',
+	'https://img.icons8.com/color-glass/96/null/salt-bae.png',
+	'https://img.icons8.com/color/96/null/ugandan-knuckles.png',
+];
+
+const isRU = (/ru/).test(navigator.language);
 
 module.exports = class Memessages
 {
@@ -33,8 +176,8 @@ module.exports = class Memessages
 
 		this.destroy = () => {};
 
-		this.getMemeIcon = this.createShuffleCycle(
-			this.memeIcons
+		this.getMemeIcon = $.createShuffleCycle(
+			memeIcons
 				.map(url => {
 					new Image(url);
 					return url;
@@ -42,46 +185,9 @@ module.exports = class Memessages
 		);
 	}
 
-	get memeIcons()
-	{
-		return [
-			'https://img.icons8.com/fluency/96/null/doge.png',
-			'https://img.icons8.com/color/96/null/not-bad-meme.png',
-			'https://img.icons8.com/officel/80/null/scared-face-meme.png',
-			'https://img.icons8.com/fluency/96/null/trollface.png',
-			'https://img.icons8.com/color/96/null/feels-guy.png',
-			'https://img.icons8.com/fluency/96/null/lul.png',
-			'https://img.icons8.com/fluency/96/null/monkas.png',
-			'https://img.icons8.com/fluency/96/null/pogchamp.png',
-			'https://img.icons8.com/fluency/96/null/gachi.png',
-			'https://img.icons8.com/fluency/96/null/angry-face-meme.png',
-			'https://img.icons8.com/color-glass/96/null/salt-bae.png',
-			'https://img.icons8.com/color/96/null/ugandan-knuckles.png',
-		];
-	}
-
 	get memeIcon()
 	{
 		return this.getMemeIcon();
-	}
-
-	get defaultSettings()
-	{
-		return {
-			memeChannels: [],
-			muted: false,
-			volume: 0.5,
-			chaosMode: false,
-			cooldownMode: false,
-
-			limiter: 0.7,
-			cooldown: [ 10, 1000 ],
-			settingsSounds: true,
-			useThemeColors: false,
-			history: true,
-			historyLimit: 100,
-			soundsLimit: 100,
-		};
 	}
 
 	get settings()
@@ -89,7 +195,7 @@ module.exports = class Memessages
 		if( this._settings )
 			return this._settings;
 
-		return this._settings = Object.assign({}, this.defaultSettings, (
+		return this._settings = Object.assign({}, defaultSettings, (
 			BdApi.Data.load(this.meta.name, 'settings') ?? {}
 		));
 	}
@@ -100,165 +206,38 @@ module.exports = class Memessages
 		BdApi.Data.save(this.meta.name, 'settings', value);
 	}
 
-	get React()
+	mount(el, selector, method = 'append', firstMount = true)
 	{
-		return BdApi.Webpack.getModule(m => m.createElement && m.cloneElement);
-	}
+		if( !el ) return;
 
-	get dispatcher()
-	{
-		return BdApi.Webpack.getModule(m => m.dispatch && m.subscribe);
-	}
+		const parent = $.find(selector);
 
-	get channelStore()
-	{
-		return BdApi.Webpack.getModule(m => m.getLastSelectedChannelId);
-	}
+		if( !parent ){
+			if( !firstMount )
+				$.on(document, 'click', () => {
+					setTimeout(() => this.mount(el, selector, method, false), 100);
+				}, { capture: true, once: true });
 
-	get userStore()
-	{
-		return BdApi.Webpack.getModule(m => m.getCurrentUser && m.getUser);
-	}
-
-	get relationshipStore()
-	{
-		return BdApi.Webpack.getModule(m => m.isBlocked && m.getFriendIDs);
-	}
-
-	get navigateTo()
-	{
-		return BdApi.Webpack.getModule(
-			BdApi.Webpack.Filters.byStrings(`"transitionTo - Transitioning to "`),
-			{ searchExports: true }
-		);
-	}
-
-	get isLangRU()
-	{
-		return (/ru/).test(navigator.language);
-	}
-
-	get $()
-	{
-		const el = (tag, attrs = {}, children = []) => {
-			let elem = document.createElement(tag);
-
-			for(let [ attr, value ] of Object.entries(attrs))
-				elem.setAttribute(attr, value);
-
-			if( Array.isArray(children) )
-				for(let child of children)
-					elem.append( el(...child) );
-			else
-				elem.innerHTML = children;
-
-			return elem;
-		};
-
-		const find = (selector, parent = null) => (parent ?? document).querySelector(selector);
-
-		const findAll = (selector, parent = null) => (parent ?? document).querySelectorAll(selector);
-
-		const eventListeners = [];
-
-		const on = (target, event, listener, options) => {
-			target?.addEventListener(event, listener, options);
-			eventListeners.push({ target, event, listener, options });
-		};
-
-		const off = (target, event) => {
-			for(let [ i, eventListener ] of eventListeners.entries()){
-				if(
-					(
-						!target
-						||
-						eventListener.target === target
-					)
-					&&
-					(
-						!event
-						||
-						eventListener.event === event
-					)
-				){
-					eventListener.target?.removeEventListener(
-						eventListener.event,
-						eventListener.listener,
-						eventListener.options,
-					);
-					
-					eventListeners.splice(i, 1);
-				}
-			}
-		};
-
-		const mount = (el, selector, method = 'append', firstMount = true) => {
-			if( !el ) return;
-
-			const parent = find(selector);
-
-			if( !parent ){
-				if( !firstMount )
-					on(document, 'click', () => {
-						setTimeout(() => mount(el, selector, method, false), 100);
-					}, { capture: true, once: true });
-
-				return;
-			}
-
-			parent?.[method]?.(el);
-
-			BdApi.DOM.onRemoved(el, () => {
-				if( this.pluginEnabled )
-					mount(el, selector, method, false);
-			});
-
-			if( firstMount )
-				this.onDestroy(() => el.remove());
-		};
-
-		const css = (el, styles = {}) => {
-			if( !el ) return;
-
-			for(let [ prop, value ] of Object.entries(styles))
-				el.style.setProperty(prop, value);
-		};
-
-		return {
-			el,
-			find,
-			findAll,
-			on,
-			off,
-			mount,
-			css,
-		};
-	}
-
-	shuffle(arr)
-	{
-		let array = [ ...arr ];
-
-		for(let i = array.length - 1; i > 0; i--){
-			let j = Math.floor(Math.random() * (i + 1));
-			[ array[i], array[j] ] = [ array[j], array[i] ];
+			return;
 		}
 
-		return array;
+		parent?.[method]?.(el);
+
+		BdApi.DOM.onRemoved(el, () => {
+			if( this.pluginEnabled )
+				this.mount(el, selector, method, false);
+		});
+
+		if( firstMount )
+			this.onDestroy(() => el.remove());
 	}
 
-	createShuffleCycle(array)
+	onDestroy(after)
 	{
-		let shuffled = [];
-		let index = 0;
-
-		return () => {
-			if( shuffled[index] )
-				return shuffled[index++];
-
-			index = 1;
-			shuffled = this.shuffle(array);
-			return shuffled[0];
+		const before = this.destroy;
+		this.destroy = () => {
+			before();
+			after();
 		};
 	}
 
@@ -267,7 +246,7 @@ module.exports = class Memessages
 		return new Promise(resolve => {
 			require('request')(options, (error, response, data) => {
 				if( error || response.statusCode != 200 ){
-					BdApi.UI.showToast(`${ this.isLangRU ? 'Ошибка' : 'Error' }: ${ error.message || response.statusCode }`, {
+					BdApi.UI.showToast(`${ isRU ? 'Ошибка' : 'Error' }: ${ error.message || response.statusCode }`, {
 						type: 'danger',
 						timeout: 3000,
 					});
@@ -312,7 +291,7 @@ module.exports = class Memessages
 				!this.cooldowns.has(message.author.id)
 			));
 
-			const user = this.userStore.getCurrentUser();
+			const user = Discord.userStore.getCurrentUser();
 
 			if(
 				this.settings.cooldownMode
@@ -347,8 +326,8 @@ module.exports = class Memessages
 
 	onMessageEdit({ message })
 	{
-		if( !this.pluginEnabled || !message ) return;
-
+		if( !this.pluginEnabled || !message || !message.content ) return;
+		
 		this.onMessageDelete(message);
 
 		this.lastMessageID = null;
@@ -543,24 +522,24 @@ module.exports = class Memessages
 		audio.playbackRate = modificators.rate ?? 1;
 		audio.preservesPitch = !(modificators.pitch ?? false);
 
-		this.$.on(audio, 'ended', () => {
+		$.on(audio, 'ended', () => {
 			this.stopAudio(audio);
 		});
 
 		if( addToHistory && this.settings.history && message ){
-			let card = this.$.el('div', { class: 'memessages--card' });
-			let wrapper = this.$.el('div');
-			let authorWrapper = this.$.el('div');
-			let msgAuthor = this.$.el('span', { class: 'memessages--username', ['data-memessages-tooltip']: true });
-			let msgText = this.$.el('span', { ['data-memessages-tooltip']: true });
+			let card = $.el('div', { class: 'memessages--card' });
+			let wrapper = $.el('div');
+			let authorWrapper = $.el('div');
+			let msgAuthor = $.el('span', { class: 'memessages--username', ['data-memessages-tooltip']: true });
+			let msgText = $.el('span', { ['data-memessages-tooltip']: true });
 
-			this.$.css(msgAuthor, {
-				'--text': `'${ this.isLangRU ? 'Перейти к сообщению' : 'Go to message' }'`,
+			$.css(msgAuthor, {
+				'--text': `'${ isRU ? 'Перейти к сообщению' : 'Go to message' }'`,
 				'--ws': 'nowrap',
 			});
 
-			this.$.css(msgText, {
-				'--text': `'${ this.isLangRU ? 'Копировать' : 'Copy' }'`,
+			$.css(msgText, {
+				'--text': `'${ isRU ? 'Копировать' : 'Copy' }'`,
 				'--ws': 'nowrap',
 				'cursor': 'pointer',
 			});
@@ -568,13 +547,13 @@ module.exports = class Memessages
 			msgAuthor.innerText = '@' + message?.author?.username;
 			msgText.innerText = message?.content;
 
-			this.$.on(msgAuthor, 'click', () => {
-				this.navigateTo(`/channels/${ message?.guild_id ?? '@me' }/${ message?.channel_id }/${ message?.id }`);
+			$.on(msgAuthor, 'click', () => {
+				Discord.navigateTo(`/channels/${ message?.guild_id ?? '@me' }/${ message?.channel_id }/${ message?.id }`);
 			});
 
-			this.$.on(msgText, 'click', () => {
+			$.on(msgText, 'click', () => {
 				DiscordNative.clipboard.copy(msgText.innerText);
-				BdApi.UI.showToast(this.isLangRU ? 'Скопировано' : 'Copied', {
+				BdApi.UI.showToast(isRU ? 'Скопировано' : 'Copied', {
 					type: 'info',
 					timeout: 1000,
 				});
@@ -585,26 +564,26 @@ module.exports = class Memessages
 			wrapper.append(msgText);
 			card.append(wrapper);
 
-			const player = this.$.el('div', { class: 'memessages--player' });
-			const playBtn = this.$.el('i', { class: 'fa-solid fa-play' });
-			const progressBar = this.$.el('div', { class: 'memessages--slider progress' });
-			const meowpadBtn = this.$.el('a', { href: `https://meowpad.me/sound/${ meta?.id ?? 0 }`, target: '_blank', ['data-memessages-tooltip']: true });
-			const mewopadIcon = this.$.el('i', { class: 'fa-solid fa-arrow-up-right-from-square' });
-			const downloadBtn = this.$.el('a', { href: audio.src, target: '_blank', download: `${ meta?.slug ?? 'audio' }.m4a`, ['data-memessages-tooltip']: true });
-			const downloadIcon = this.$.el('i', { class: 'fa-solid fa-download' });
+			const player = $.el('div', { class: 'memessages--player' });
+			const playBtn = $.el('i', { class: 'fa-solid fa-play' });
+			const progressBar = $.el('div', { class: 'memessages--slider progress' });
+			const meowpadBtn = $.el('a', { href: `https://meowpad.me/sound/${ meta?.id ?? 0 }`, target: '_blank', ['data-memessages-tooltip']: true });
+			const mewopadIcon = $.el('i', { class: 'fa-solid fa-arrow-up-right-from-square' });
+			const downloadBtn = $.el('a', { href: audio.src, target: '_blank', download: `${ meta?.slug ?? 'audio' }.m4a`, ['data-memessages-tooltip']: true });
+			const downloadIcon = $.el('i', { class: 'fa-solid fa-download' });
 
-			this.$.css(progressBar, {
+			$.css(progressBar, {
 				'pointer-events': 'none',
 			});
 
-			this.$.css(meowpadBtn, {
+			$.css(meowpadBtn, {
 				'--text': `'Meowpad'`,
 				'--offset': 'calc(-50% + 9px)',
 				'--ws': 'nowrap',
 			});
 
-			this.$.css(downloadBtn, {
-				'--text': `'${ this.isLangRU ? 'Загрузить' : 'Download' }'`,
+			$.css(downloadBtn, {
+				'--text': `'${ isRU ? 'Загрузить' : 'Download' }'`,
 				'--offset': 'calc(-100% + 18px)',
 				'--ws': 'nowrap',
 			});
@@ -617,7 +596,7 @@ module.exports = class Memessages
 			player.append(downloadBtn);
 			card.append(player);
 
-			this.$.on(playBtn, 'click', () => {
+			$.on(playBtn, 'click', () => {
 				if( this.audioQueue.has(audio) )
 					this.stopAudio(audio);
 				else
@@ -641,19 +620,19 @@ module.exports = class Memessages
 				});
 			};
 
-			this.$.on(progressBar, 'mousedown', e => {
+			$.on(progressBar, 'mousedown', e => {
 				enabled = true;
 				onChange(e);
 			});
 
-			this.$.on(document, 'mousemove', onChange);
+			$.on(document, 'mousemove', onChange);
 
-			this.$.on(document, 'mouseup', e => {
+			$.on(document, 'mouseup', e => {
 				enabled = false;
 			});
 
-			this.$.on(audio, 'timeupdate', () => {
-				this.$.css(progressBar, {
+			$.on(audio, 'timeupdate', () => {
+				$.css(progressBar, {
 					'--value': audio.currentTime / audio.duration || 0,
 				});
 			});
@@ -688,7 +667,7 @@ module.exports = class Memessages
 		audio?.ui?.playBtn?.classList?.add?.('fa-spin');
 
 		await new Promise(async resolve => {
-			this.$.on(audio, 'canplaythrough', resolve, { once: true });
+			$.on(audio, 'canplaythrough', resolve, { once: true });
 
 			let url = audio.memeURL;
 
@@ -700,9 +679,8 @@ module.exports = class Memessages
 
 			if( audio.src != url ){
 				audio.src = url;
-				audio.load();
 			}else{
-				this.$.off(audio, 'canplaythrough');
+				$.off(audio, 'canplaythrough');
 				resolve();
 			}
 		});
@@ -711,7 +689,7 @@ module.exports = class Memessages
 		audio?.ui?.playBtn?.classList?.remove?.('fa-circle-notch');
 		audio?.ui?.playBtn?.classList?.remove?.('fa-spin');
 
-		this.$.css(audio?.ui?.progressBar, {
+		$.css(audio?.ui?.progressBar, {
 			'pointer-events': '',
 		});
 	}
@@ -721,7 +699,7 @@ module.exports = class Memessages
 		if( this.audioQueue.has(audio) ) return;
 
 		if( this.audioQueue.size >= this.settings.soundsLimit )
-			return BdApi.UI.showToast(this.isLangRU ? 'Слишком много звуков!!!' : 'Too many sounds!!!', {
+			return BdApi.UI.showToast(isRU ? 'Слишком много звуков!!!' : 'Too many sounds!!!', {
 				type: 'danger',
 				timeout: 3000,
 			});
@@ -741,7 +719,7 @@ module.exports = class Memessages
 		audio?.ui?.playBtn?.classList?.add?.('fa-circle-notch');
 		audio?.ui?.playBtn?.classList?.add?.('fa-spin');
 
-		this.$.css(audio?.ui?.playBtn, {
+		$.css(audio?.ui?.playBtn, {
 			'pointer-events': 'none',
 		});
 
@@ -762,7 +740,7 @@ module.exports = class Memessages
 		audio?.ui?.playBtn?.classList?.remove?.('fa-circle-notch');
 		audio?.ui?.playBtn?.classList?.remove?.('fa-spin');
 
-		this.$.css(audio?.ui?.playBtn, {
+		$.css(audio?.ui?.playBtn, {
 			'pointer-events': '',
 		});
 	}
@@ -779,7 +757,7 @@ module.exports = class Memessages
 		audio?.ui?.playBtn?.classList?.remove?.('fa-circle-notch');
 		audio?.ui?.playBtn?.classList?.remove?.('fa-spin');
 
-		this.$.css(audio?.ui?.progressBar, { '--value': 0 });
+		$.css(audio?.ui?.progressBar, { '--value': 0 });
 	}
 
 	async aggregateAudio(func)
@@ -790,44 +768,44 @@ module.exports = class Memessages
 
 	cutHistory()
 	{
-		this.$.findAll(`.memessages--card:nth-child(${ this.settings.historyLimit }) ~ .memessages--card`, this.refs.history)
+		$.findAll(`.memessages--card:nth-child(${ this.settings.historyLimit }) ~ .memessages--card`, this.refs.history)
 			.forEach(overLimit => overLimit.remove());
 	}
 
 	async render()
 	{
 		if( this.settings.useThemeColors )
-			this.$.find('#app-mount')
+			$.find('#app-mount')
 				.classList
 				.add('memessages--use-theme-colors');
 
 
 
-		const muteBtnLabelMute = this.isLangRU ? 'Отключить звук' : 'Mute';
-		const muteBtnLabelUnmute = this.isLangRU ? 'Включить звук' : 'Unmute';
-		const muteBtn = this.$.el('div', {
-			class: `${ this.$.find('[class^="winButtonMinMax"]').classList.value } memessages--mute-toggle on`,
+		const muteBtnLabelMute = isRU ? 'Отключить звук' : 'Mute';
+		const muteBtnLabelUnmute = isRU ? 'Включить звук' : 'Unmute';
+		const muteBtn = $.el('div', {
+			class: `${ $.find('[class^="winButtonMinMax"]').classList.value } memessages--mute-toggle on`,
 			['data-memessages-tooltip']: true,
 		});
 
-		this.$.css(muteBtn, {
+		$.css(muteBtn, {
 			'--text': `'${ muteBtnLabelMute }'`,
 			'--offset': 'calc(-100% + 28px)',
 			'--ws': 'nowrap',
 		});
 
-		const muteBtnIcon = this.$.el('i', { class: 'fa-solid fa-volume-off' });
+		const muteBtnIcon = $.el('i', { class: 'fa-solid fa-volume-off' });
 		muteBtn.append(muteBtnIcon);
 
-		const muteBtnImg = this.$.el('img', { src: this.memeIcon });
+		const muteBtnImg = $.el('img', { src: this.memeIcon });
 		muteBtn.append(muteBtnImg);
 
 		if( this.settings.muted ){
 			muteBtn.classList.remove('on');
-			this.$.css(muteBtn, { '--text': `'${ muteBtnLabelUnmute }'` });
+			$.css(muteBtn, { '--text': `'${ muteBtnLabelUnmute }'` });
 		}
 
-		this.$.on(muteBtn, 'click', () => {
+		$.on(muteBtn, 'click', () => {
 			this.settings = {
 				...this.settings,
 				muted: !this.settings.muted,
@@ -837,54 +815,54 @@ module.exports = class Memessages
 
 			this.aggregateAudio(audio => audio.muted = this.settings.muted);
 
-			this.$.css(muteBtn, { '--text': `'${ muteBtnLabelUnmute }'` });
+			$.css(muteBtn, { '--text': `'${ muteBtnLabelUnmute }'` });
 
 			if( !this.settings.muted ){
 				muteBtnImg.setAttribute('src', this.memeIcon);
-				this.$.css(muteBtn, { '--text': `'${ muteBtnLabelMute }'` });
+				$.css(muteBtn, { '--text': `'${ muteBtnLabelMute }'` });
 			}
 		});
 
-		this.$.mount(muteBtn, '[class^="typeWindows"][class*="titleBar"]');
+		this.mount(muteBtn, '[class^="typeWindows"][class*="titleBar"]');
 
 
 
-		const channelBtnLabelOn = this.isLangRU ? 'Включить мемы в канале' : 'Enable memes in a channel';
-		const channelBtnLabelOff = this.isLangRU ? 'Выключить мемы в канале' : 'Disable memes in a channel';
-		const channelBtn = this.$.el('div', {
+		const channelBtnLabelOn = isRU ? 'Включить мемы в канале' : 'Enable memes in a channel';
+		const channelBtnLabelOff = isRU ? 'Выключить мемы в канале' : 'Disable memes in a channel';
+		const channelBtn = $.el('div', {
 			class: 'memessages--toolbar-btn memessages--channel-btn',
 			['data-memessages-tooltip']: true,
 		});
 
-		this.$.css(channelBtn, {
+		$.css(channelBtn, {
 			'--text': `'${ channelBtnLabelOn }'`,
 			'--offset': 'calc(-100% + 30px)',
 			'--ws': 'nowrap',
 		});
 
-		const channelBtnIconOn = this.$.el('i', { class: 'memessages--channel-btn--icon-on fa-solid fa-bell' });
+		const channelBtnIconOn = $.el('i', { class: 'memessages--channel-btn--icon-on fa-solid fa-bell' });
 		channelBtn.append(channelBtnIconOn);
 
-		const channelBtnIconOff = this.$.el('i', { class: 'memessages--channel-btn--icon-off fa-solid fa-bell-slash' });
+		const channelBtnIconOff = $.el('i', { class: 'memessages--channel-btn--icon-off fa-solid fa-bell-slash' });
 		channelBtn.append(channelBtnIconOff);
 
-		const channelBtnImg = this.$.el('img', { src: this.memeIcon });
+		const channelBtnImg = $.el('img', { src: this.memeIcon });
 		channelBtn.append(channelBtnImg);
 
-		const currentChannelId = this.channelStore.getChannelId();
+		const currentChannelId = Discord.channelStore.getChannelId();
 
 		if( !currentChannelId )
 			channelBtn.classList.add('hide');
 
 		if( this.settings.memeChannels.includes(currentChannelId) ){
 			channelBtn.classList.add('on');
-			this.$.css(channelBtn, { '--text': `'${ channelBtnLabelOff }'` });
+			$.css(channelBtn, { '--text': `'${ channelBtnLabelOff }'` });
 		}
 
-		this.$.on(channelBtn, 'click', () => {
+		$.on(channelBtn, 'click', () => {
 			channelBtn.classList.toggle('on');
 
-			const channelId = this.channelStore.getChannelId();
+			const channelId = Discord.channelStore.getChannelId();
 
 			if( this.settings.memeChannels.includes(channelId) ){
 				this.settings = {
@@ -893,7 +871,7 @@ module.exports = class Memessages
 						.filter(id => id != channelId),
 				};
 
-				this.$.css(channelBtn, { '--text': `'${ channelBtnLabelOn }'` });
+				$.css(channelBtn, { '--text': `'${ channelBtnLabelOn }'` });
 
 				this.aggregateAudio(audio => {
 					if( audio?.memessage?.channel_id == channelId )
@@ -909,7 +887,7 @@ module.exports = class Memessages
 				};
 
 				channelBtnImg.setAttribute('src', this.memeIcon);
-				this.$.css(channelBtn, { '--text': `'${ channelBtnLabelOff }'` });
+				$.css(channelBtn, { '--text': `'${ channelBtnLabelOff }'` });
 			}
 		});
 
@@ -921,36 +899,36 @@ module.exports = class Memessages
 
 				if( this.settings.memeChannels.includes(channelId) ){
 					channelBtn.classList.add('on');
-					this.$.css(channelBtn, { '--text': `'${ channelBtnLabelOff }'` });
+					$.css(channelBtn, { '--text': `'${ channelBtnLabelOff }'` });
 				}else{
 					channelBtn.classList.remove('on');
-					this.$.css(channelBtn, { '--text': `'${ channelBtnLabelOn }'` });
+					$.css(channelBtn, { '--text': `'${ channelBtnLabelOn }'` });
 				}
 			}
 			else
 				channelBtn.classList.add('hide');
 		};
 
-		this.dispatcher.subscribe('CHANNEL_SELECT', onChannelChange);
+		Discord.dispatcher.subscribe('CHANNEL_SELECT', onChannelChange);
 		this.onDestroy(() => {
-			this.dispatcher.unsubscribe('CHANNEL_SELECT', onChannelChange);
+			Discord.dispatcher.unsubscribe('CHANNEL_SELECT', onChannelChange);
 		});
 
-		this.$.mount(channelBtn, '[class^="toolbar"]');
+		this.mount(channelBtn, '[class^="toolbar"]');
 
 
 
-		const sidebarBtn = this.$.el('div', {
+		const sidebarBtn = $.el('div', {
 			class: 'memessages--toolbar-btn',
 		});
 
-		const sidebarBtnIcon = this.$.el('i', { class: 'fa-solid fa-bars' });
+		const sidebarBtnIcon = $.el('i', { class: 'fa-solid fa-bars' });
 		sidebarBtn.append(sidebarBtnIcon);
 
-		const sidebarBtnImg = this.$.el('img', { src: this.memeIcon });
+		const sidebarBtnImg = $.el('img', { src: this.memeIcon });
 		sidebarBtn.append(sidebarBtnImg);
 
-		this.$.on(sidebarBtn, 'click', () => {
+		$.on(sidebarBtn, 'click', () => {
 			this.sidebar = !this.sidebar;
 			
 			if( this.sidebar ){
@@ -962,27 +940,27 @@ module.exports = class Memessages
 			sidebarBtnImg.setAttribute('src', this.memeIcon);
 		});
 
-		this.$.mount(sidebarBtn, '[class^="toolbar"]');
+		this.mount(sidebarBtn, '[class^="toolbar"]');
 
 
 
-		const sidebarUnpinBtn = this.$.el('div', {
+		const sidebarUnpinBtn = $.el('div', {
 			class: 'memessages--toolbar-btn hide',
 			['data-memessages-tooltip']: true,
 		});
 
-		this.$.css(sidebarUnpinBtn, {
-			'--text': `'${ this.isLangRU ? 'Открепить' : 'Unpin' }'`,
+		$.css(sidebarUnpinBtn, {
+			'--text': `'${ isRU ? 'Открепить' : 'Unpin' }'`,
 			'--offset': 'calc(-100% + 30px)',
 		});
 
-		const sidebarUnpinBtnIcon = this.$.el('i', { class: 'fa-solid fa-thumbtack' });
+		const sidebarUnpinBtnIcon = $.el('i', { class: 'fa-solid fa-thumbtack' });
 		sidebarUnpinBtn.append(sidebarUnpinBtnIcon);
 
-		const sidebarUnpinBtnImg = this.$.el('img', { src: this.memeIcon });
+		const sidebarUnpinBtnImg = $.el('img', { src: this.memeIcon });
 		sidebarUnpinBtn.append(sidebarUnpinBtnImg);
 
-		this.$.on(sidebarUnpinBtn, 'click', () => {
+		$.on(sidebarUnpinBtn, 'click', () => {
 			this.sidebarPinned = !this.sidebarPinned;
 			
 			if( this.sidebarPinned ){
@@ -990,8 +968,8 @@ module.exports = class Memessages
 				sidebarBtn.classList.add('hide');
 				sidebarUnpinBtn.classList.remove('hide');
 
-				this.$.css(
-					this.$.find('[class^="base"]'),
+				$.css(
+					$.find('[class^="base"]'),
 					{ 'border-top-right-radius': '8px' },
 				);
 			}else{
@@ -999,8 +977,8 @@ module.exports = class Memessages
 				sidebarBtn.classList.remove('hide');
 				sidebarUnpinBtn.classList.add('hide');
 
-				this.$.css(
-					this.$.find('[class^="base"]'),
+				$.css(
+					$.find('[class^="base"]'),
 					{ 'border-top-right-radius': '' },
 				);
 			}
@@ -1009,27 +987,27 @@ module.exports = class Memessages
 		});
 
 		this.onDestroy(() => {
-			this.$.css(
-				this.$.find('[class^="base"]'),
+			$.css(
+				$.find('[class^="base"]'),
 				{ 'border-top-right-radius': '' },
 			);
 		});
 
-		this.$.mount(sidebarUnpinBtn, '[class^="toolbar"]');
+		this.mount(sidebarUnpinBtn, '[class^="toolbar"]');
 
 
 
-		const sidebar = this.$.el('div', { class: 'memessages--sidebar' });
+		const sidebar = $.el('div', { class: 'memessages--sidebar' });
 
-		const sidebarMainScrollbox = this.$.el('div', { class: 'memessages--sidebar--scrollbox' });
-		const sidebarQuickSettings = this.$.el('div', { class: 'memessages--card sticky' });
+		const sidebarMainScrollbox = $.el('div', { class: 'memessages--sidebar--scrollbox' });
+		const sidebarQuickSettings = $.el('div', { class: 'memessages--card sticky' });
 
-		const sidebarSettingsScrollbox = this.$.el('div', { class: 'memessages--sidebar--scrollbox hide' });
-		const sidebarPluginSettings = this.$.el('div', { class: 'memessages--card' });
+		const sidebarSettingsScrollbox = $.el('div', { class: 'memessages--sidebar--scrollbox hide' });
+		const sidebarPluginSettings = $.el('div', { class: 'memessages--card' });
 
-		const sidebarCloseBtn = this.$.el('i', { class: 'memessages--sidebar--close memessages--sidebar--floating-btn fa-solid fa-angle-right' });
-		const sidebarPinBtn = this.$.el('i', { class: 'memessages--sidebar--pin memessages--sidebar--floating-btn fa-solid fa-thumbtack' });
-		const history = this.$.el('div', { class: 'memessages--sidebar--history' });
+		const sidebarCloseBtn = $.el('i', { class: 'memessages--sidebar--close memessages--sidebar--floating-btn fa-solid fa-angle-right' });
+		const sidebarPinBtn = $.el('i', { class: 'memessages--sidebar--pin memessages--sidebar--floating-btn fa-solid fa-thumbtack' });
+		const history = $.el('div', { class: 'memessages--sidebar--history' });
 
 		this.refs.history = history;
 
@@ -1041,27 +1019,27 @@ module.exports = class Memessages
 		sidebar.append(sidebarCloseBtn);
 		sidebar.append(sidebarPinBtn);
 
-		this.$.on(sidebarCloseBtn, 'click', () => {
+		$.on(sidebarCloseBtn, 'click', () => {
 			this.sidebar = false;
 			sidebar.classList.remove('open');
 			sidebarMainScrollbox.classList.remove('blur');
 			sidebarSettingsScrollbox.classList.add('hide');
 		});
 
-		this.$.on(sidebarPinBtn, 'click', () => {
+		$.on(sidebarPinBtn, 'click', () => {
 			this.sidebarPinned = true;
 
 			sidebar.classList.add('pin');
 			sidebarBtn.classList.add('hide');
 			sidebarUnpinBtn.classList.remove('hide');
 
-			this.$.css(
-				this.$.find('[class^="base"]'),
+			$.css(
+				$.find('[class^="base"]'),
 				{ 'border-top-right-radius': '8px' },
 			);
 		});
 
-		this.$.on(sidebarMainScrollbox, 'scroll', () => {
+		$.on(sidebarMainScrollbox, 'scroll', () => {
 			if( sidebarMainScrollbox.scrollTop > 30 )
 				sidebarQuickSettings.classList.add('stuck');
 			else
@@ -1093,7 +1071,7 @@ module.exports = class Memessages
 					'https://www.myinstants.com/media/sounds/eh-put0-marty-mcfly.mp3',
 				],
 				prop: 'volume',
-				title: this.isLangRU ? 'Громкость' : 'Volume',
+				title: isRU ? 'Громкость' : 'Volume',
 				icon: 'fa-solid fa-volume-high',
 				action: value => {
 					this.aggregateAudio(audio => audio.volume = value);
@@ -1116,15 +1094,15 @@ module.exports = class Memessages
 					'https://www.myinstants.com/media/sounds/00002a5b.mp3',
 				],
 				prop: 'chaosMode',
-				title: this.isLangRU ? 'Режим Хаоса!' : 'Chaos Mode!',
-				desc: this.isLangRU ? 'Включает звуки во всех каналах' : 'Turns on sounds for all channels',
+				title: isRU ? 'Режим Хаоса!' : 'Chaos Mode!',
+				desc: isRU ? 'Включает звуки во всех каналах' : 'Turns on sounds for all channels',
 				icon: 'fa-solid fa-skull',
 			},
 			{
 				type: 'toggle',
 				sounds: [
 					...(
-						this.isLangRU
+						isRU
 							? [
 								'https://api.meowpad.me/v2/sounds/preview/35004.m4a',
 								'https://api.meowpad.me/v2/sounds/preview/3944.m4a',
@@ -1135,8 +1113,8 @@ module.exports = class Memessages
 					'https://api.meowpad.me/v2/sounds/preview/498.m4a',
 				],
 				prop: 'cooldownMode',
-				title: this.isLangRU ? 'Режим Кулдауна' : 'Cooldown Mode',
-				desc: this.isLangRU ? 'Пользователи не смогут спамить' : 'Users will not be able to spam',
+				title: isRU ? 'Режим Кулдауна' : 'Cooldown Mode',
+				desc: isRU ? 'Пользователи не смогут спамить' : 'Users will not be able to spam',
 				icon: 'fa-solid fa-stopwatch',
 				action: () => {
 					this.cooldowns.clear();
@@ -1148,7 +1126,7 @@ module.exports = class Memessages
 				sounds: [
 					'https://api.meowpad.me/v2/sounds/preview/80931.m4a',
 				],
-				title: this.isLangRU ? 'Настройки' : 'Settings',
+				title: isRU ? 'Настройки' : 'Settings',
 				icon: 'fa-solid fa-gear',
 				action: () => {
 					this.settingsSubMenu = true;
@@ -1162,12 +1140,12 @@ module.exports = class Memessages
 				sounds: [
 					'https://api.meowpad.me/v2/sounds/preview/38297.m4a',
 				],
-				title: this.isLangRU ? 'О плагине' : 'About',
+				title: isRU ? 'О плагине' : 'About',
 				icon: 'fa-solid fa-info',
 				action: () => {
-					const h = this.React.createElement;
+					const h = React.createElement;
 					BdApi.UI.showConfirmationModal(`${ this.meta.name } ${ this.meta.version }`, (
-						this.isLangRU
+						isRU
 							? h('div', { class: 'memessages--discord-modal-content' },
 								h('p', null, 'Спасибо за установку плагина =)'),
 								h('p', null,
@@ -1239,7 +1217,7 @@ module.exports = class Memessages
 				sounds: [
 					'https://api.meowpad.me/v2/sounds/preview/80930.m4a',
 				],
-				title: this.isLangRU ? 'Назад' : 'Back',
+				title: isRU ? 'Назад' : 'Back',
 				icon: 'fa-solid fa-arrow-left',
 				action: () => {
 					this.settingsSubMenu = false;
@@ -1256,8 +1234,8 @@ module.exports = class Memessages
 			{
 				type: 'slider',
 				prop: 'limiter',
-				title: this.isLangRU ? 'Лимитер' : 'Limiter',
-				desc: this.isLangRU ? 'Защита слуха' : 'Ear protection',
+				title: isRU ? 'Лимитер' : 'Limiter',
+				desc: isRU ? 'Защита слуха' : 'Ear protection',
 				icon: 'fa-solid fa-shield-halved',
 				action: value => {
 					const db = (value - 1) * 100;
@@ -1265,7 +1243,7 @@ module.exports = class Memessages
 					settingsRefs.limiterValue.innerText = `${ Math.round(db) }db`;
 				},
 				render: el => {
-					const limiterValue = this.$.el('div', { class: 'memessages--pill' });
+					const limiterValue = $.el('div', { class: 'memessages--pill' });
 					limiterValue.innerText = `${ Math.round((this.settings.limiter - 1) * 100) }db`;
 					el.append(limiterValue);
 
@@ -1278,8 +1256,8 @@ module.exports = class Memessages
 					'https://api.meowpad.me/v2/sounds/preview/79117.m4a',
 				],
 				prop: 'cooldown',
-				title: this.isLangRU ? 'Кулдаун' : 'Cooldown',
-				desc: this.isLangRU ? 'Длительность' : 'Duration',
+				title: isRU ? 'Кулдаун' : 'Cooldown',
+				desc: isRU ? 'Длительность' : 'Duration',
 				icon: 'fa-solid fa-stopwatch-20',
 				options: [
 					{
@@ -1301,19 +1279,19 @@ module.exports = class Memessages
 					};
 				},
 				render: el => {
-					const select = this.$.el('select', { class: 'memessages--input', style: 'width: 50px' }, [
-						[ 'option', { value: 1000, style: 'color:black' }, this.isLangRU ? 'сек' : 'sec' ],
-						[ 'option', { value: 1000 * 60, style: 'color:black' }, this.isLangRU ? 'мин' : 'min' ],
-						[ 'option', { value: 1000 * 60 * 60, style: 'color:black' }, this.isLangRU ? 'час' : 'hrs' ],
+					const select = $.el('select', { class: 'memessages--input', style: 'width: 50px' }, [
+						[ 'option', { value: 1000, style: 'color:black' }, isRU ? 'сек' : 'sec' ],
+						[ 'option', { value: 1000 * 60, style: 'color:black' }, isRU ? 'мин' : 'min' ],
+						[ 'option', { value: 1000 * 60 * 60, style: 'color:black' }, isRU ? 'час' : 'hrs' ],
 					]);
 
 					select.value = this.settings.cooldown[1];
 					
-					const hidden = this.$.find('[type="hidden"]', el);
+					const hidden = $.find('[type="hidden"]', el);
 					hidden.after(select);
 					hidden.remove();
 
-					this.$.on(select, 'input', () => {
+					$.on(select, 'input', () => {
 						this.settings = {
 							...this.settings,
 							cooldown: [
@@ -1330,7 +1308,7 @@ module.exports = class Memessages
 					'https://api.meowpad.me/v2/sounds/preview/656.m4a',
 				],
 				prop: 'settingsSounds',
-				title: this.isLangRU ? 'Звуки в настройках' : 'Sounds in settings',
+				title: isRU ? 'Звуки в настройках' : 'Sounds in settings',
 				icon: 'fa-solid fa-gears',
 			},
 			{
@@ -1339,15 +1317,15 @@ module.exports = class Memessages
 					'https://api.meowpad.me/v2/sounds/preview/37043.m4a',
 				],
 				prop: 'useThemeColors',
-				title: this.isLangRU ? 'Использовать цвета темы' : 'Use theme colors',
+				title: isRU ? 'Использовать цвета темы' : 'Use theme colors',
 				icon: 'fa-solid fa-palette',
 				action: value => {
 					if( value )
-						this.$.find('#app-mount')
+						$.find('#app-mount')
 							.classList
 							.add('memessages--use-theme-colors');
 					else
-						this.$.find('#app-mount')
+						$.find('#app-mount')
 							.classList
 							.remove('memessages--use-theme-colors');
 				},
@@ -1356,7 +1334,7 @@ module.exports = class Memessages
 				type: 'toggle',
 				sounds: [
 					...(
-						this.isLangRU
+						isRU
 							? [
 								'https://api.meowpad.me/v2/sounds/preview/31297.m4a',
 								'https://api.meowpad.me/v2/sounds/preview/4898.m4a',
@@ -1371,7 +1349,7 @@ module.exports = class Memessages
 					'https://www.myinstants.com/media/sounds/back-to-the-future-1.mp3',
 				],
 				prop: 'history',
-				title: this.isLangRU ? 'История звуков' : 'Sound history',
+				title: isRU ? 'История звуков' : 'Sound history',
 				icon: 'fa-solid fa-clock-rotate-left',
 				action: () => {
 					history.innerHTML = '';
@@ -1383,8 +1361,8 @@ module.exports = class Memessages
 					'https://api.meowpad.me/v2/sounds/preview/79117.m4a',
 				],
 				prop: 'historyLimit',
-				title: this.isLangRU ? 'Лимит истории' : 'History limit',
-				desc: this.isLangRU ? 'Максимальная длина истории' : 'Maximum history length',
+				title: isRU ? 'Лимит истории' : 'History limit',
+				desc: isRU ? 'Максимальная длина истории' : 'Maximum history length',
 				icon: 'fa-solid fa-bars-staggered',
 				options: {
 					min: '1',
@@ -1406,8 +1384,8 @@ module.exports = class Memessages
 					'https://api.meowpad.me/v2/sounds/preview/79117.m4a',
 				],
 				prop: 'soundsLimit',
-				title: this.isLangRU ? 'Лимит звуков' : 'Sounds limit',
-				desc: this.isLangRU ? 'Максимум параллельных звуков' : 'Maximum parallel sounds',
+				title: isRU ? 'Лимит звуков' : 'Sounds limit',
+				desc: isRU ? 'Максимум параллельных звуков' : 'Maximum parallel sounds',
 				icon: 'fa-solid fa-music',
 				options: {
 					min: '1',
@@ -1423,23 +1401,23 @@ module.exports = class Memessages
 			},
 			{
 				type: 'button',
-				title: this.isLangRU ? 'Сброс настроек' : 'Reset settings',
+				title: isRU ? 'Сброс настроек' : 'Reset settings',
 				icon: 'fa-solid fa-rotate-right',
 				action: () => {
-					const h = this.React.createElement;
-					BdApi.UI.showConfirmationModal(this.isLangRU ? 'Сброс настроек' : 'Reset settings', h(
+					const h = React.createElement;
+					BdApi.UI.showConfirmationModal(isRU ? 'Сброс настроек' : 'Reset settings', h(
 						'div',
 						{ class: 'memessages--discord-modal-content' },
-						this.isLangRU ? 'Вы уверены что хотите восстановить настройки по умолчанию?' : 'Are you sure you want to restore the default settings?'
+						isRU ? 'Вы уверены что хотите восстановить настройки по умолчанию?' : 'Are you sure you want to restore the default settings?'
 					), {
-						confirmText: this.isLangRU ? 'Да' : 'Yes',
-						cancelText: this.isLangRU ? 'Нет' : 'No',
+						confirmText: isRU ? 'Да' : 'Yes',
+						cancelText: isRU ? 'Нет' : 'No',
 						onConfirm: () => {
-							this.settings = { ...this.defaultSettings };
+							this.settings = { ...defaultSettings };
 							
 							this.stop();
 
-							BdApi.UI.showToast(this.isLangRU ? 'Перезапустите Discord!' : 'Restart Discord!', {
+							BdApi.UI.showToast(isRU ? 'Перезапустите Discord!' : 'Restart Discord!', {
 								type: 'warning',
 								timeout: 3000,
 							});
@@ -1451,13 +1429,13 @@ module.exports = class Memessages
 
 		for(let [ settingsPanel, settingsList ] of [ [sidebarQuickSettings, quickSettingsList], [sidebarPluginSettings, pluginSettingsList] ]){
 			for(let setting of settingsList){
-				const param = this.$.el('div', { class: 'memessages--card--setting' });
-				const labelGroup = this.$.el('div', { class: 'memessages--card--setting--label' });
-				const icon = this.$.el('i', { class: `fa-sm fa-fw ${ setting?.icon ?? '' }` });
-				const label = this.$.el('div');
-				const title = this.$.el('div', { class: 'memessages--card--setting--label--title' });
-				const desc = this.$.el('div', { class: 'memessages--card--setting--label--desc' });
-				const fill = this.$.el('div', { style: 'margin-right: -15px; flex: 1 1 auto' });
+				const param = $.el('div', { class: 'memessages--card--setting' });
+				const labelGroup = $.el('div', { class: 'memessages--card--setting--label' });
+				const icon = $.el('i', { class: `fa-sm fa-fw ${ setting?.icon ?? '' }` });
+				const label = $.el('div');
+				const title = $.el('div', { class: 'memessages--card--setting--label--title' });
+				const desc = $.el('div', { class: 'memessages--card--setting--label--desc' });
+				const fill = $.el('div', { style: 'margin-right: -15px; flex: 1 1 auto' });
 
 				title.innerText = setting?.title ?? '';
 				desc.innerText = setting?.desc ?? '';
@@ -1475,7 +1453,7 @@ module.exports = class Memessages
 				param.append(fill);
 				settingsPanel.append(param);
 
-				const getRandomSound = this.createShuffleCycle(
+				const getRandomSound = $.createShuffleCycle(
 					( setting?.sounds ?? [] )
 						.map(async url => {
 							let sound = await this.createAudio(url, null, null, {}, false, false);
@@ -1486,7 +1464,7 @@ module.exports = class Memessages
 
 				switch(setting.type){
 					case 'toggle':
-						const toggle = this.$.el('div', { class: 'memessages--toggle' });
+						const toggle = $.el('div', { class: 'memessages--toggle' });
 						param.append(toggle);
 
 						for(let [ attr, value ] of Object.entries(setting?.options ?? {}))
@@ -1495,7 +1473,7 @@ module.exports = class Memessages
 						if( this.settings[setting.prop] )
 							toggle.classList.add('on');
 
-						this.$.on(toggle, 'click', async () => {
+						$.on(toggle, 'click', async () => {
 							toggle.classList.toggle('on');
 
 							this.settings = {
@@ -1517,14 +1495,14 @@ module.exports = class Memessages
 						break;
 
 					case 'slider':
-						const slider = this.$.el('div', { class: 'memessages--slider' });
+						const slider = $.el('div', { class: 'memessages--slider' });
 						param.append(slider);
 
 						for(let [ attr, value ] of Object.entries(setting?.options ?? {}))
 							slider.setAttribute(attr, value);
 
 						let value = this.settings[setting.prop];
-						this.$.css(slider, { '--value': value });
+						$.css(slider, { '--value': value });
 
 						let enabled = false;
 						const onChange = e => {
@@ -1539,7 +1517,7 @@ module.exports = class Memessages
 									))
 								));
 
-								this.$.css(slider, { '--value': newValue });
+								$.css(slider, { '--value': newValue });
 
 								this.settings = {
 									...this.settings,
@@ -1550,14 +1528,14 @@ module.exports = class Memessages
 							});
 						};
 
-						this.$.on(slider, 'mousedown', e => {
+						$.on(slider, 'mousedown', e => {
 							enabled = true;
 							onChange(e);
 						});
 
-						this.$.on(document, 'mousemove', onChange);
+						$.on(document, 'mousemove', onChange);
 
-						this.$.on(document, 'mouseup', async e => {
+						$.on(document, 'mouseup', async e => {
 							if( !enabled ) return;
 							
 							enabled = false;
@@ -1577,7 +1555,7 @@ module.exports = class Memessages
 					
 					case 'button':
 						param.classList.add('clickable');
-						this.$.on(param, 'click', async () => {
+						$.on(param, 'click', async () => {
 							setting?.action?.(this.settings[setting.prop]);
 
 							const sound = await getRandomSound();
@@ -1594,7 +1572,7 @@ module.exports = class Memessages
 						const isGroup = setting.type == 'inputGroup';
 
 						const to = isGroup
-							? this.$.el('div', { class: 'memessages--input' })
+							? $.el('div', { class: 'memessages--input' })
 							: param;
 
 						if( isGroup )
@@ -1605,7 +1583,7 @@ module.exports = class Memessages
 							: [ this.settings[setting.prop] ];
 
 						for(let [ i, val ] of values.entries()){
-							const input = this.$.el('input', { class: 'memessages--input', type: 'text' });
+							const input = $.el('input', { class: 'memessages--input', type: 'text' });
 							to.append(input);
 
 							const attrs = setting?.options ?? {};
@@ -1614,11 +1592,11 @@ module.exports = class Memessages
 
 							input.value = val;
 
-							this.$.on(input, 'keypress', e => e.stopPropagation());
-							this.$.on(input, 'keydown', e => e.stopPropagation());
-							this.$.on(input, 'keyup', e => e.stopPropagation());
+							$.on(input, 'keypress', e => e.stopPropagation());
+							$.on(input, 'keydown', e => e.stopPropagation());
+							$.on(input, 'keyup', e => e.stopPropagation());
 
-							this.$.on(input, 'input', async e => {
+							$.on(input, 'input', async e => {
 								e.stopPropagation();
 
 								this.settings = {
@@ -1658,21 +1636,12 @@ module.exports = class Memessages
 		}
 
 		this.onDestroy(() => {
-			this.$.find('#app-mount')
+			$.find('#app-mount')
 				.classList
 				.remove('memessages--use-theme-colors');
 		});
 
-		this.$.mount(sidebar, '[class^="container"]');
-	}
-
-	onDestroy(after)
-	{
-		const before = this.destroy;
-		this.destroy = () => {
-			before();
-			after();
-		};
+		this.mount(sidebar, '[class^="container"]');
 	}
 	
 	async autoUpdate()
@@ -1720,18 +1689,18 @@ module.exports = class Memessages
 		const onMsgDelete = e => this.onMessageDelete(e);
 		const onMsgEdit = e => this.onMessageEdit(e);
 
-		this.dispatcher.subscribe('MESSAGE_CREATE', onMsg);
-		this.dispatcher.subscribe('MESSAGE_DELETE', onMsgDelete);
-		this.dispatcher.subscribe('MESSAGE_UPDATE', onMsgEdit);
+		Discord.dispatcher.subscribe('MESSAGE_CREATE', onMsg);
+		Discord.dispatcher.subscribe('MESSAGE_DELETE', onMsgDelete);
+		Discord.dispatcher.subscribe('MESSAGE_UPDATE', onMsgEdit);
 
 		this.onDestroy(() => {
-			this.dispatcher.unsubscribe('MESSAGE_CREATE', onMsg);
-			this.dispatcher.unsubscribe('MESSAGE_DELETE', onMsgDelete);
-			this.dispatcher.unsubscribe('MESSAGE_UPDATE', onMsgEdit);
+			Discord.dispatcher.unsubscribe('MESSAGE_CREATE', onMsg);
+			Discord.dispatcher.unsubscribe('MESSAGE_DELETE', onMsgDelete);
+			Discord.dispatcher.unsubscribe('MESSAGE_UPDATE', onMsgEdit);
 		});
 
-		// this.$.on(document, 'keydown', e => this.onKeydown(e));
-		// this.$.on(document, 'keyup', e => this.onKeyup(e));
+		// $.on(document, 'keydown', e => this.onKeydown(e));
+		// $.on(document, 'keyup', e => this.onKeyup(e));
 
 		BdApi.DOM.addStyle(this.meta.name, `
 			@import url("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.3.0/css/all.min.css");
@@ -2395,7 +2364,7 @@ module.exports = class Memessages
 			this.stopAudio(audio)
 		));
 
-		this.$.off();
+		$.off();
 
 		BdApi.DOM.removeStyle(this.meta.name);
 
