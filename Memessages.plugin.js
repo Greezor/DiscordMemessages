@@ -4,7 +4,7 @@
  * @authorId 382062281623863298
  * @authorLink https://betterdiscord.app/developer/Greezor
  * @description Plays sound memes when receiving messages
- * @version 0.12.5
+ * @version 0.12.6
  * @invite ghkfrqqs
  * @donate https://boosty.to/greezor
  * @source https://github.com/Greezor/DiscordMemessages
@@ -509,6 +509,7 @@ module.exports = class Memessages
 
 		audio.memeURL = url;
 		audio.memessage = message;
+		audio.modificators = modificators;
 		audio.ui = {};
 		audio.effects = {
 			echo: {
@@ -520,9 +521,6 @@ module.exports = class Memessages
 			gain,
 			compressor,
 		};
-
-		audio.playbackRate = modificators.rate ?? 1;
-		audio.preservesPitch = !(modificators.pitch ?? false);
 
 		$.on(audio, 'ended', () => {
 			this.stopAudio(audio);
@@ -715,6 +713,8 @@ module.exports = class Memessages
 
 		audio.muted = this.settings.muted;
 		audio.volume = this.settings.volume;
+		audio.playbackRate = audio.modificators.rate ?? 1;
+		audio.preservesPitch = !(audio.modificators.pitch ?? false);
 		audio.effects.compressor.threshold.value = (this.settings.limiter - 1) * 100;
 
 		audio?.ui?.playBtn?.classList?.remove?.('fa-play');
