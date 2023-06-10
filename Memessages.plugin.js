@@ -4,8 +4,8 @@
  * @authorId 382062281623863298
  * @authorLink https://betterdiscord.app/developer/Greezor
  * @description Plays sound memes when receiving messages
- * @version 0.12.6
- * @invite ghkfrqqs
+ * @version 0.12.7
+ * @invite CD55HR399U
  * @donate https://boosty.to/greezor
  * @source https://github.com/Greezor/DiscordMemessages
  */
@@ -1116,7 +1116,7 @@ module.exports = class Memessages
 				],
 				prop: 'cooldownMode',
 				title: isRU ? 'Режим Кулдауна' : 'Cooldown Mode',
-				desc: isRU ? 'Пользователи не смогут спамить' : 'Users will not be able to spam',
+				desc: isRU ? 'Антиспам' : 'Antispam',
 				icon: 'fa-solid fa-stopwatch',
 				action: () => {
 					this.cooldowns.clear();
