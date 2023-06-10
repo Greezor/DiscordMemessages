@@ -1116,7 +1116,7 @@ module.exports = class Memessages
 				],
 				prop: 'cooldownMode',
 				title: isRU ? 'Режим Кулдауна' : 'Cooldown Mode',
-				desc: isRU ? 'Пользователи не смогут спамить' : 'Users will not be able to spam',
+				desc: isRU ? 'Антиспам' : 'Antispam',
 				icon: 'fa-solid fa-stopwatch',
 				action: () => {
 					this.cooldowns.clear();
