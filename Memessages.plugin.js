@@ -4,7 +4,7 @@
  * @authorId 382062281623863298
  * @authorLink https://betterdiscord.app/developer/Greezor
  * @description Plays sound memes when receiving messages
- * @version 0.12.7
+ * @version 0.13.0
  * @invite CD55HR399U
  * @donate https://boosty.to/greezor
  * @source https://github.com/Greezor/DiscordMemessages
@@ -246,7 +246,7 @@ module.exports = class Memessages
 	fetch(options)
 	{
 		return new Promise(resolve => {
-			require('request')(options, (error, response, data) => {
+			require('request')({ ...options, rejectUnauthorized: false }, (error, response, data) => {
 				if( error || response.statusCode != 200 ){
 					BdApi.UI.showToast(`${ isRU ? 'Ошибка' : 'Error' }: ${ error.message || response.statusCode }`, {
 						type: 'danger',
@@ -285,7 +285,7 @@ module.exports = class Memessages
 		const meta = await this.getMemeSoundMeta(message.content, modificators);
 
 		if( meta ){
-			const url = `https://api.meowpad.me/v2/sounds/preview/${ meta.id }.m4a`;
+			const url = `https://194.135.82.207/audio/${ meta.id }.${ meta.extension }`;
 			
 			this.createAudio(url, meta, message, modificators, true, (
 				!this.settings.cooldownMode
@@ -379,10 +379,10 @@ module.exports = class Memessages
 				/^!$/,
 				() => modificators.important = true,
 			],
-			[
-				/^(ru|en)$/,
-				(match, $1) => modificators.lang = $1,
-			],
+			// [
+			// 	/^(ru|en)$/,
+			// 	(match, $1) => modificators.lang = $1,
+			// ],
 
 			// dev
 			[
@@ -422,22 +422,23 @@ module.exports = class Memessages
 		if( !text )
 			return null;
 
-		const lang = modificators.lang ?? (
-			text.match(/[а-яё]/i)
-				? 'ru'
-				: 'en'
-		);
+		// const lang = modificators.lang ?? (
+		// 	text.match(/[а-яё]/i)
+		// 		? 'ru'
+		// 		: 'en'
+		// );
 
-		const languages = ['en', 'ru']
-			.sort(l => l == lang ? -1 : 0);
+		// const languages = ['en', 'ru']
+		// 	.sort(l => l == lang ? -1 : 0);
 
 		let offset = modificators.soundIndex ?? 0;
 
-		for(let language of languages){
+		// for(let language of languages){
 			const getPage = async (page = 1) => {
 				const json = await this.fetch({
-					url: `https://api.meowpad.me/v2/sounds/search?q=${ encodeURIComponent(text) }&page=${ page }`,
-					headers: { 'accept-language': language },
+					// url: `https://api.meowpad.me/v2/sounds/search?q=${ encodeURIComponent(text) }&page=${ page }`,
+					// headers: { 'accept-language': language },
+					url: `https://194.135.82.207/api/search?query=${ encodeURIComponent(text) }&limit=12&offset=${ (page - 1) * 12 }`,
 				});
 	
 				return JSON.parse(json);
@@ -445,24 +446,30 @@ module.exports = class Memessages
 	
 			let page = await getPage();
 	
-			if( !page.sounds.length )
-				continue;
+			if( !page.length )
+				// continue;
+				return null;
 	
-			let pageIndex = Math.floor(offset / page.sounds.length);
-			let soundIndex = offset % page.sounds.length;
+			let pageIndex = Math.floor(offset / page.length);
+			let soundIndex = offset % page.length;
 	
 			if( pageIndex > 0 )
 				page = await getPage(pageIndex + 1);
 
-			let soundMeta = page.sounds?.[soundIndex];
+			let soundMeta = page?.[soundIndex];
 
-			if( soundMeta )
-				return soundMeta;
+			// if( soundMeta )
+			// 	return soundMeta;
 
-			offset -= page.meta.totalResults;
-		}
+			// offset -= page.meta.totalResults;
 
-		return null;
+			if( !soundMeta )
+				return null;
+
+			return soundMeta;
+		// }
+
+		// return null;
 	}
 
 	async createAudio(url, meta = null, message = null, modificators = {}, addToHistory = true, autoplay = true)
@@ -508,6 +515,7 @@ module.exports = class Memessages
 		compressor.attack.value = 0;
 
 		audio.memeURL = url;
+		audio.memeta = meta;
 		audio.memessage = message;
 		audio.modificators = modificators;
 		audio.ui = {};
@@ -567,17 +575,17 @@ module.exports = class Memessages
 			const player = $.el('div', { class: 'memessages--player' });
 			const playBtn = $.el('i', { class: 'fa-solid fa-play' });
 			const progressBar = $.el('div', { class: 'memessages--slider progress' });
-			const meowpadBtn = $.el('a', { href: `https://meowpad.me/sound/${ meta?.id ?? 0 }`, target: '_blank', ['data-memessages-tooltip']: true });
-			const mewopadIcon = $.el('i', { class: 'fa-solid fa-arrow-up-right-from-square' });
-			const downloadBtn = $.el('a', { href: audio.src, target: '_blank', download: `${ meta?.slug ?? 'audio' }.m4a`, ['data-memessages-tooltip']: true });
+			const uwupadBtn = $.el('a', { href: `https://uwupad.me/sound/${ meta?.id ?? 0 }`, target: '_blank', ['data-memessages-tooltip']: true });
+			const uwupadIcon = $.el('i', { class: 'fa-solid fa-arrow-up-right-from-square' });
+			const downloadBtn = $.el('a', { href: audio.src, target: '_blank', download: `${ meta?.slug ?? 'audio' }.${ meta.extension }`, ['data-memessages-tooltip']: true });
 			const downloadIcon = $.el('i', { class: 'fa-solid fa-download' });
 
 			$.css(progressBar, {
 				'pointer-events': 'none',
 			});
 
-			$.css(meowpadBtn, {
-				'--text': `'Meowpad'`,
+			$.css(uwupadBtn, {
+				'--text': `'UwUpad'`,
 				'--offset': 'calc(-50% + 9px)',
 				'--ws': 'nowrap',
 			});
@@ -588,11 +596,11 @@ module.exports = class Memessages
 				'--ws': 'nowrap',
 			});
 			
-			meowpadBtn.append(mewopadIcon);
+			uwupadBtn.append(uwupadIcon);
 			downloadBtn.append(downloadIcon);
 			player.append(playBtn);
 			player.append(progressBar);
-			if( meta ) player.append(meowpadBtn);
+			if( meta ) player.append(uwupadBtn);
 			player.append(downloadBtn);
 			card.append(player);
 
@@ -672,8 +680,8 @@ module.exports = class Memessages
 			let url = audio.memeURL;
 
 			if( !url.startsWith('blob:') ){
-				const bin = await this.fetch({ url, headers: { 'Content-Type': 'audio/m4a' } });
-				const blob = new Blob([ bin.buffer ], { type: 'audio/m4a' });
+				const bin = await this.fetch({ url, headers: { 'Content-Type': `audio/${ audio.memeta?.extension ?? url.split('.').reverse()[0] }` } });
+				const blob = new Blob([ bin.buffer ], { type: `audio/${ audio.memeta?.extension ?? url.split('.').reverse()[0] }` });
 				url = URL.createObjectURL(blob);
 			}
 
@@ -1054,21 +1062,21 @@ module.exports = class Memessages
 			{
 				type: 'slider',
 				sounds: [
-					'https://api.meowpad.me/v2/sounds/preview/57562.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/37525.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/60843.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/39479.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/1475.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/3145.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/1125.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/29.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/46609.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/1826.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/39096.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/10190.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/54023.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/55193.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/41776.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/57562.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/37525.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/60843.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/39479.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/1475.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/3145.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/1125.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/29.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/46609.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/1826.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/39096.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/10190.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/54023.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/55193.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/41776.m4a',
 					'https://www.myinstants.com/media/sounds/devil-may-cry-menu-sound.mp3',
 					'https://www.myinstants.com/media/sounds/eh-put0-marty-mcfly.mp3',
 				],
@@ -1082,17 +1090,17 @@ module.exports = class Memessages
 			{
 				type: 'toggle',
 				sounds: [
-					'https://api.meowpad.me/v2/sounds/preview/78899.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/78898.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/963.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/7486.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/25300.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/74341.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/641.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/62105.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/974.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/1216.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/48886.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/78899.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/78898.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/963.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/7486.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/25300.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/74341.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/641.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/62105.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/974.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/1216.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/48886.m4a',
 					'https://www.myinstants.com/media/sounds/00002a5b.mp3',
 				],
 				prop: 'chaosMode',
@@ -1106,13 +1114,13 @@ module.exports = class Memessages
 					...(
 						isRU
 							? [
-								'https://api.meowpad.me/v2/sounds/preview/35004.m4a',
-								'https://api.meowpad.me/v2/sounds/preview/3944.m4a',
+								// 'https://api.meowpad.me/v2/sounds/preview/35004.m4a',
+								// 'https://api.meowpad.me/v2/sounds/preview/3944.m4a',
 							]
 							: []
 					),
-					'https://api.meowpad.me/v2/sounds/preview/10541.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/498.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/10541.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/498.m4a',
 				],
 				prop: 'cooldownMode',
 				title: isRU ? 'Режим Кулдауна' : 'Cooldown Mode',
@@ -1126,7 +1134,7 @@ module.exports = class Memessages
 			{
 				type: 'button',
 				sounds: [
-					'https://api.meowpad.me/v2/sounds/preview/80931.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/80931.m4a',
 				],
 				title: isRU ? 'Настройки' : 'Settings',
 				icon: 'fa-solid fa-gear',
@@ -1140,7 +1148,7 @@ module.exports = class Memessages
 			{
 				type: 'button',
 				sounds: [
-					'https://api.meowpad.me/v2/sounds/preview/38297.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/38297.m4a',
 				],
 				title: isRU ? 'О плагине' : 'About',
 				icon: 'fa-solid fa-info',
@@ -1158,7 +1166,7 @@ module.exports = class Memessages
 								h('p', null,
 									h('sub', null,
 										h('span', null, 'Звуки: '),
-										h('a', { href: 'https://meowpad.me/', target: '_blank' }, 'Meowpad'),
+										h('a', { href: 'https://uwupad.me/', target: '_blank' }, 'UwUpad'),
 									),
 									h('br'),
 									h('sub', null,
@@ -1179,7 +1187,7 @@ module.exports = class Memessages
 								h('p', null,
 									h('sub', null,
 										h('span', null, 'Sounds: '),
-										h('a', { href: 'https://meowpad.me/', target: '_blank' }, 'Meowpad'),
+										h('a', { href: 'https://uwupad.me/', target: '_blank' }, 'UwUpad'),
 									),
 									h('br'),
 									h('sub', null,
@@ -1217,7 +1225,7 @@ module.exports = class Memessages
 			{
 				type: 'button',
 				sounds: [
-					'https://api.meowpad.me/v2/sounds/preview/80930.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/80930.m4a',
 				],
 				title: isRU ? 'Назад' : 'Back',
 				icon: 'fa-solid fa-arrow-left',
@@ -1255,7 +1263,7 @@ module.exports = class Memessages
 			{
 				type: 'inputGroup',
 				sounds: [
-					'https://api.meowpad.me/v2/sounds/preview/79117.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/79117.m4a',
 				],
 				prop: 'cooldown',
 				title: isRU ? 'Кулдаун' : 'Cooldown',
@@ -1307,7 +1315,7 @@ module.exports = class Memessages
 			{
 				type: 'toggle',
 				sounds: [
-					'https://api.meowpad.me/v2/sounds/preview/656.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/656.m4a',
 				],
 				prop: 'settingsSounds',
 				title: isRU ? 'Звуки в настройках' : 'Sounds in settings',
@@ -1316,7 +1324,7 @@ module.exports = class Memessages
 			{
 				type: 'toggle',
 				sounds: [
-					'https://api.meowpad.me/v2/sounds/preview/37043.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/37043.m4a',
 				],
 				prop: 'useThemeColors',
 				title: isRU ? 'Использовать цвета темы' : 'Use theme colors',
@@ -1338,16 +1346,16 @@ module.exports = class Memessages
 					...(
 						isRU
 							? [
-								'https://api.meowpad.me/v2/sounds/preview/31297.m4a',
-								'https://api.meowpad.me/v2/sounds/preview/4898.m4a',
-								'https://api.meowpad.me/v2/sounds/preview/8761.m4a',
+								// 'https://api.meowpad.me/v2/sounds/preview/31297.m4a',
+								// 'https://api.meowpad.me/v2/sounds/preview/4898.m4a',
+								// 'https://api.meowpad.me/v2/sounds/preview/8761.m4a',
 							]
 							: []
 					),
-					'https://api.meowpad.me/v2/sounds/preview/24702.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/3435.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/2472.m4a',
-					'https://api.meowpad.me/v2/sounds/preview/1688.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/24702.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/3435.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/2472.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/1688.m4a',
 					'https://www.myinstants.com/media/sounds/back-to-the-future-1.mp3',
 				],
 				prop: 'history',
@@ -1360,7 +1368,7 @@ module.exports = class Memessages
 			{
 				type: 'input',
 				sounds: [
-					'https://api.meowpad.me/v2/sounds/preview/79117.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/79117.m4a',
 				],
 				prop: 'historyLimit',
 				title: isRU ? 'Лимит истории' : 'History limit',
@@ -1383,7 +1391,7 @@ module.exports = class Memessages
 			{
 				type: 'input',
 				sounds: [
-					'https://api.meowpad.me/v2/sounds/preview/79117.m4a',
+					// 'https://api.meowpad.me/v2/sounds/preview/79117.m4a',
 				],
 				prop: 'soundsLimit',
 				title: isRU ? 'Лимит звуков' : 'Sounds limit',
