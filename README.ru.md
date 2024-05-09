@@ -40,7 +40,6 @@ ___
 - [echo] - добавляет эхо.
 - [*I*] - выбирает звук из найденных звуков по номеру. **I** - номер звука. По умолчанию: I = `0` (выбирает первый). Пример: `[1]` (выбирает второй).
 - [!] - помечает звук важным, отключает все звуки и воспроизводит текущий.
-- [*L*] - устанавливает язык для поиска в meowpad. **L** - код языка. По умолчанию: `auto`. Доступные значения: `ru` or `en`.
 
 ## Поддержать меня
 - [Boosty](https://boosty.to/greezor)
@@ -48,6 +47,6 @@ ___
 ## Спасибо
 - [Discord](https://discord.com/)
 - [BetterDiscord](https://betterdiscord.app/)
-- [Meowpad](https://meowpad.me/)
+- [UwUpad](https://uwupad.me/)
 - [Font Awesome](https://fontawesome.com/)
 - [Icons8](https://icons8.ru/)
