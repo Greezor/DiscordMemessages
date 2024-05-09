@@ -40,7 +40,6 @@ Plays sound memes when receiving messages
 - [echo] - adds echo.
 - [*I*] - chooses the sound by number from found sounds. **I** - sound index. Default value: I = `0` (chooses the first). Sample: `[1]` (chooses the second).
 - [!] - important flag, disables all sound and start play current.
-- [*L*] - sets language for meowpad search. **L** - language code. Default value: `auto`. Available values: `ru` or `en`.
 
 ## Support me
 - [Boosty](https://boosty.to/greezor)
@@ -48,6 +47,6 @@ Plays sound memes when receiving messages
 ## Thanks to
 - [Discord](https://discord.com/)
 - [BetterDiscord](https://betterdiscord.app/)
-- [Meowpad](https://meowpad.me/)
+- [UwUpad](https://uwupad.me/)
 - [Font Awesome](https://fontawesome.com/)
 - [Icons8](https://icons8.com/)
