@@ -4,7 +4,7 @@
  * @authorId 382062281623863298
  * @authorLink https://betterdiscord.app/developer/Greezor
  * @description Plays sound memes when receiving messages
- * @version 0.13.0
+ * @version 0.13.1
  * @invite CD55HR399U
  * @donate https://boosty.to/greezor
  * @source https://github.com/Greezor/DiscordMemessages
@@ -246,7 +246,7 @@ module.exports = class Memessages
 	fetch(options)
 	{
 		return new Promise(resolve => {
-			require('request')({ ...options, rejectUnauthorized: false }, (error, response, data) => {
+			require('request')(options, (error, response, data) => {
 				if( error || response.statusCode != 200 ){
 					BdApi.UI.showToast(`${ isRU ? 'Ошибка' : 'Error' }: ${ error.message || response.statusCode }`, {
 						type: 'danger',
@@ -285,7 +285,7 @@ module.exports = class Memessages
 		const meta = await this.getMemeSoundMeta(message.content, modificators);
 
 		if( meta ){
-			const url = `https://194.135.82.207/audio/${ meta.id }.${ meta.extension }`;
+			const url = `https://uwupad.me/audio/${ meta.id }.${ meta.extension }`;
 			
 			this.createAudio(url, meta, message, modificators, true, (
 				!this.settings.cooldownMode
@@ -438,7 +438,7 @@ module.exports = class Memessages
 				const json = await this.fetch({
 					// url: `https://api.meowpad.me/v2/sounds/search?q=${ encodeURIComponent(text) }&page=${ page }`,
 					// headers: { 'accept-language': language },
-					url: `https://194.135.82.207/api/search?query=${ encodeURIComponent(text) }&limit=12&offset=${ (page - 1) * 12 }`,
+					url: `https://uwupad.me/api/search?query=${ encodeURIComponent(text) }&limit=12&offset=${ (page - 1) * 12 }`,
 				});
 	
 				return JSON.parse(json);
