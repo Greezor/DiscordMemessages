@@ -1649,7 +1649,8 @@ module.exports = class Memessages
 	
 	async autoUpdate()
 	{
-		const code = await this.fetch('https://raw.githubusercontent.com/Greezor/DiscordMemessages/stage/Memessages.plugin.js');
+		const response = await this.fetch('https://raw.githubusercontent.com/Greezor/DiscordMemessages/stage/Memessages.plugin.js');
+		const code = await response.text();
 
 		const [ , newMajor, newMinor, newPatch ] = code.match(/@version (\d+)\.(\d+)\.(\d+)/);
 		const [ major, minor, patch ] = this.meta.version.split('.');
