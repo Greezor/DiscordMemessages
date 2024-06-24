@@ -4,7 +4,7 @@
  * @authorId 382062281623863298
  * @authorLink https://betterdiscord.app/developer/Greezor
  * @description Plays sound memes when receiving messages
- * @version 0.13.1
+ * @version 0.13.2
  * @invite CD55HR399U
  * @donate https://boosty.to/greezor
  * @source https://github.com/Greezor/DiscordMemessages
@@ -243,22 +243,20 @@ module.exports = class Memessages
 		};
 	}
 
-	fetch(options)
+	async fetch(url, options)
 	{
-		return new Promise(resolve => {
-			require('request')(options, (error, response, data) => {
-				if( error || response.statusCode != 200 ){
-					BdApi.UI.showToast(`${ isRU ? 'Ошибка' : 'Error' }: ${ error.message || response.statusCode }`, {
-						type: 'danger',
-						timeout: 3000,
-					});
+		const response = await BdApi.Net.fetch(url, options);
 
-					throw new Error(error || response.statusCode);
-				}
-
-				resolve(data);
+		if( !response.ok ){
+			BdApi.UI.showToast(`Memessages: ${ response.statusText }`, {
+				type: 'danger',
+				timeout: 3000,
 			});
-		});
+
+			throw new Error(response.status);
+		}
+
+		return response;
 	}
 
 	async onMessage({ message, optimistic })
@@ -285,7 +283,7 @@ module.exports = class Memessages
 		const meta = await this.getMemeSoundMeta(message.content, modificators);
 
 		if( meta ){
-			const url = `https://uwupad.me/audio/${ meta.id }.${ meta.extension }`;
+			const url = `https://cdn.uwupad.me/${ meta.id }.${ meta.extension }`;
 			
 			this.createAudio(url, meta, message, modificators, true, (
 				!this.settings.cooldownMode
@@ -435,13 +433,8 @@ module.exports = class Memessages
 
 		// for(let language of languages){
 			const getPage = async (page = 1) => {
-				const json = await this.fetch({
-					// url: `https://api.meowpad.me/v2/sounds/search?q=${ encodeURIComponent(text) }&page=${ page }`,
-					// headers: { 'accept-language': language },
-					url: `https://uwupad.me/api/search?query=${ encodeURIComponent(text) }&limit=12&offset=${ (page - 1) * 12 }`,
-				});
-	
-				return JSON.parse(json);
+				const response = await this.fetch(`https://uwupad.me/api/search?query=${ encodeURIComponent(text) }&limit=12&offset=${ (page - 1) * 12 }`);
+				return await response.json();
 			};
 	
 			let page = await getPage();
@@ -680,8 +673,8 @@ module.exports = class Memessages
 			let url = audio.memeURL;
 
 			if( !url.startsWith('blob:') ){
-				const bin = await this.fetch({ url, headers: { 'Content-Type': `audio/${ audio.memeta?.extension ?? url.split('.').reverse()[0] }` } });
-				const blob = new Blob([ bin.buffer ], { type: `audio/${ audio.memeta?.extension ?? url.split('.').reverse()[0] }` });
+				const response = await this.fetch(url, { headers: { 'Content-Type': `audio/${ audio.memeta?.extension ?? url.split('.').reverse()[0] }` } });
+				const blob = await response.blob();
 				url = URL.createObjectURL(blob);
 			}
 
