@@ -245,7 +245,55 @@ module.exports = class Memessages
 
 	async fetch(url, options)
 	{
-		const response = await BdApi.Net.fetch(url, options);
+		// return new Promise(resolve => {
+		// 	require('request')({ ...options, url, rejectUnauthorized: false }, (error, response, data) => {
+		// 		if( error || response.statusCode != 200 ){
+		// 			BdApi.UI.showToast(`Memessages: ${ error }`, {
+		// 				type: 'danger',
+		// 				timeout: 3000,
+		// 			});
+
+		// 			throw new Error(error || response.statusCode);
+		// 		}
+
+		// 		resolve({
+		// 			text: async () => String(data),
+		// 			json: async () => JSON.parse(data),
+		// 			blob: async () => new Blob([ data.buffer ], { type: response.headers['content-type'] }),
+		// 		});
+		// 	});
+		// });
+
+		const response = await BdApi.Net.fetch(url, {
+			...options,
+			headers: {
+				'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+				// 'accept-encoding': 'gzip, deflate, br, zstd',
+				'accept-language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+				'cache-control': 'no-cache',
+				'cookie': 'lang=ru; onlyLang=false',
+				'dnt': '1',
+				'pragma': 'no-cache',
+				'priority': 'u=0, i',
+				'referer': url,
+				'sec-ch-ua': '"Not)A;Brand";v="99", "Google Chrome";v="127", "Chromium";v="127"',
+				'sec-ch-ua-arch': '"x86"',
+				'sec-ch-ua-bitness': '"64"',
+				'sec-ch-ua-full-version': '"127.0.6533.100"',
+				'sec-ch-ua-full-version-list': '"Not)A;Brand";v="99.0.0.0", "Google Chrome";v="127.0.6533.100", "Chromium";v="127.0.6533.100"',
+				'sec-ch-ua-mobile': '?0',
+				'sec-ch-ua-model': '""',
+				'sec-ch-ua-platform': '"Windows"',
+				'sec-ch-ua-platform-version': '"15.0.0"',
+				'sec-fetch-dest': 'document',
+				'sec-fetch-mode': 'navigate',
+				'sec-fetch-site': 'same-origin',
+				'sec-fetch-user': '?1',
+				'upgrade-insecure-requests': '1',
+				'user-agent': window.navigator.userAgent,
+				...(options?.headers ?? {}),
+			},
+		});
 
 		if( !response.ok ){
 			BdApi.UI.showToast(`Memessages: ${ response.statusText }`, {
