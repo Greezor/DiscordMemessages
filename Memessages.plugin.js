@@ -4,7 +4,7 @@
  * @authorId 382062281623863298
  * @authorLink https://betterdiscord.app/developer/Greezor
  * @description Plays sound memes when receiving messages
- * @version 0.13.2
+ * @version 0.13.3
  * @invite CD55HR399U
  * @donate https://boosty.to/greezor
  * @source https://github.com/Greezor/DiscordMemessages
@@ -245,7 +245,55 @@ module.exports = class Memessages
 
 	async fetch(url, options)
 	{
-		const response = await BdApi.Net.fetch(url, options);
+		// return new Promise(resolve => {
+		// 	require('request')({ ...options, url, rejectUnauthorized: false }, (error, response, data) => {
+		// 		if( error || response.statusCode != 200 ){
+		// 			BdApi.UI.showToast(`Memessages: ${ error }`, {
+		// 				type: 'danger',
+		// 				timeout: 3000,
+		// 			});
+
+		// 			throw new Error(error || response.statusCode);
+		// 		}
+
+		// 		resolve({
+		// 			text: async () => String(data),
+		// 			json: async () => JSON.parse(data),
+		// 			blob: async () => new Blob([ data.buffer ], { type: response.headers['content-type'] }),
+		// 		});
+		// 	});
+		// });
+
+		const response = await BdApi.Net.fetch(url, {
+			...options,
+			headers: {
+				'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+				// 'accept-encoding': 'gzip, deflate, br, zstd',
+				'accept-language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+				'cache-control': 'no-cache',
+				'cookie': 'lang=ru; onlyLang=false',
+				'dnt': '1',
+				'pragma': 'no-cache',
+				'priority': 'u=0, i',
+				'referer': url,
+				'sec-ch-ua': '"Not)A;Brand";v="99", "Google Chrome";v="127", "Chromium";v="127"',
+				'sec-ch-ua-arch': '"x86"',
+				'sec-ch-ua-bitness': '"64"',
+				'sec-ch-ua-full-version': '"127.0.6533.100"',
+				'sec-ch-ua-full-version-list': '"Not)A;Brand";v="99.0.0.0", "Google Chrome";v="127.0.6533.100", "Chromium";v="127.0.6533.100"',
+				'sec-ch-ua-mobile': '?0',
+				'sec-ch-ua-model': '""',
+				'sec-ch-ua-platform': '"Windows"',
+				'sec-ch-ua-platform-version': '"15.0.0"',
+				'sec-fetch-dest': 'document',
+				'sec-fetch-mode': 'navigate',
+				'sec-fetch-site': 'same-origin',
+				'sec-fetch-user': '?1',
+				'upgrade-insecure-requests': '1',
+				'user-agent': window.navigator.userAgent,
+				...(options?.headers ?? {}),
+			},
+		});
 
 		if( !response.ok ){
 			BdApi.UI.showToast(`Memessages: ${ response.statusText }`, {
@@ -377,10 +425,10 @@ module.exports = class Memessages
 				/^!$/,
 				() => modificators.important = true,
 			],
-			// [
-			// 	/^(ru|en)$/,
-			// 	(match, $1) => modificators.lang = $1,
-			// ],
+			[
+				/^(ru|en)$/,
+				(match, $1) => modificators.lang = $1,
+			],
 
 			// dev
 			[
@@ -420,49 +468,46 @@ module.exports = class Memessages
 		if( !text )
 			return null;
 
-		// const lang = modificators.lang ?? (
-		// 	text.match(/[а-яё]/i)
-		// 		? 'ru'
-		// 		: 'en'
-		// );
-
-		// const languages = ['en', 'ru']
-		// 	.sort(l => l == lang ? -1 : 0);
+		const lang = modificators.lang ?? (
+			text.match(/[а-яё]/i)
+				? 'ru'
+				: 'en'
+		);
 
 		let offset = modificators.soundIndex ?? 0;
 
-		// for(let language of languages){
-			const getPage = async (page = 1) => {
-				const response = await this.fetch(`https://uwupad.me/api/search?query=${ encodeURIComponent(text) }&limit=12&offset=${ (page - 1) * 12 }`);
-				return await response.json();
-			};
-	
-			let page = await getPage();
-	
-			if( !page.length )
-				// continue;
-				return null;
-	
-			let pageIndex = Math.floor(offset / page.length);
-			let soundIndex = offset % page.length;
-	
-			if( pageIndex > 0 )
-				page = await getPage(pageIndex + 1);
+		const getPage = async (page = 1) => {
+			const response = await this.fetch(`https://uwupad.me/api/search?query=${ encodeURIComponent(text) }&limit=12&offset=${ (page - 1) * 12 }`, {
+				headers: {
+					'accept-language': (
+						lang == 'ru'
+							? 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7'
+							: 'en-US,en;q=0.9'
+					),
+					'cookie': `lang=${ lang }; onlyLang=true`,
+				},
+			});
+			
+			return await response.json();
+		};
 
-			let soundMeta = page?.[soundIndex];
+		let page = await getPage();
 
-			// if( soundMeta )
-			// 	return soundMeta;
+		if( !page.length )
+			return null;
 
-			// offset -= page.meta.totalResults;
+		let pageIndex = Math.floor(offset / page.length);
+		let soundIndex = offset % page.length;
 
-			if( !soundMeta )
-				return null;
+		if( pageIndex > 0 )
+			page = await getPage(pageIndex + 1);
 
-			return soundMeta;
-		// }
+		let soundMeta = page?.[soundIndex];
 
-		// return null;
+		if( !soundMeta )
+			return null;
+
+		return soundMeta;
 	}
 
 	async createAudio(url, meta = null, message = null, modificators = {}, addToHistory = true, autoplay = true)
