@@ -4,7 +4,7 @@
  * @authorId 382062281623863298
  * @authorLink https://betterdiscord.app/developer/Greezor
  * @description Plays sound memes when receiving messages
- * @version 0.13.2
+ * @version 0.13.3
  * @invite CD55HR399U
  * @donate https://boosty.to/greezor
  * @source https://github.com/Greezor/DiscordMemessages
@@ -425,10 +425,10 @@ module.exports = class Memessages
 				/^!$/,
 				() => modificators.important = true,
 			],
-			// [
-			// 	/^(ru|en)$/,
-			// 	(match, $1) => modificators.lang = $1,
-			// ],
+			[
+				/^(ru|en)$/,
+				(match, $1) => modificators.lang = $1,
+			],
 
 			// dev
 			[
@@ -468,49 +468,46 @@ module.exports = class Memessages
 		if( !text )
 			return null;
 
-		// const lang = modificators.lang ?? (
-		// 	text.match(/[а-яё]/i)
-		// 		? 'ru'
-		// 		: 'en'
-		// );
-
-		// const languages = ['en', 'ru']
-		// 	.sort(l => l == lang ? -1 : 0);
+		const lang = modificators.lang ?? (
+			text.match(/[а-яё]/i)
+				? 'ru'
+				: 'en'
+		);
 
 		let offset = modificators.soundIndex ?? 0;
 
-		// for(let language of languages){
-			const getPage = async (page = 1) => {
-				const response = await this.fetch(`https://uwupad.me/api/search?query=${ encodeURIComponent(text) }&limit=12&offset=${ (page - 1) * 12 }`);
-				return await response.json();
-			};
-	
-			let page = await getPage();
-	
-			if( !page.length )
-				// continue;
-				return null;
-	
-			let pageIndex = Math.floor(offset / page.length);
-			let soundIndex = offset % page.length;
-	
-			if( pageIndex > 0 )
-				page = await getPage(pageIndex + 1);
+		const getPage = async (page = 1) => {
+			const response = await this.fetch(`https://uwupad.me/api/search?query=${ encodeURIComponent(text) }&limit=12&offset=${ (page - 1) * 12 }`, {
+				headers: {
+					'accept-language': (
+						lang == 'ru'
+							? 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7'
+							: 'en-US,en;q=0.9'
+					),
+					'cookie': `lang=${ lang }; onlyLang=true`,
+				},
+			});
+			
+			return await response.json();
+		};
 
-			let soundMeta = page?.[soundIndex];
+		let page = await getPage();
 
-			// if( soundMeta )
-			// 	return soundMeta;
+		if( !page.length )
+			return null;
 
-			// offset -= page.meta.totalResults;
+		let pageIndex = Math.floor(offset / page.length);
+		let soundIndex = offset % page.length;
 
-			if( !soundMeta )
-				return null;
+		if( pageIndex > 0 )
+			page = await getPage(pageIndex + 1);
 
-			return soundMeta;
-		// }
+		let soundMeta = page?.[soundIndex];
 
-		// return null;
+		if( !soundMeta )
+			return null;
+
+		return soundMeta;
 	}
 
 	async createAudio(url, meta = null, message = null, modificators = {}, addToHistory = true, autoplay = true)
